@@ -31,6 +31,7 @@ export default function Home() {
   const [activeSection, setActiveSection] =
     useState<SidebarSection>("dashboard");
   const [importTab, setImportTab] = useState<ImportSource>("mal");
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -72,9 +73,35 @@ export default function Home() {
         onSelect={setActiveSection}
         userEmail={session.user.email}
         onSignOut={handleSignOut}
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
       />
 
       <div className="relative z-10 flex-1 overflow-y-auto">
+        {/* MOBILE TOP BAR — only shown below the md breakpoint,
+            since the sidebar is permanently visible from md up. */}
+        <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-white/[0.07] bg-[#05050a]/90 px-4 py-3 backdrop-blur-xl md:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileSidebarOpen(true)}
+            aria-label="Open menu"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-white/70 transition hover:bg-white/[0.06] hover:text-white"
+          >
+            <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
+              <path
+                d="M4 6h16M4 12h16M4 18h16"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+
+          <span className="text-sm font-bold tracking-tight text-white">
+            track-social-hub
+          </span>
+        </div>
+
         {/* Tracks overall app usage regardless of which
             section is active. */}
         <div className="mx-auto w-full max-w-6xl px-4 pt-6">
