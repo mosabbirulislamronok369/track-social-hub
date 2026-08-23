@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* ============================================================
+   PREMIUM DESIGN TOKENS — dark + glassmorphism
+   Append this to the END of src/app/globals.css
+   (don't remove anything already in that file — this only
+   adds new variables/utility classes on top).
+============================================================ */
+
+:root {
+  --ink: #05050a;
+  --surface: rgba(255, 255, 255, 0.045);
+  --surface-strong: rgba(255, 255, 255, 0.09);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.2);
+
+  --accent: #7c5cfc;
+  --accent-soft: rgba(124, 92, 252, 0.16);
+  --accent-2: #22d3b8;
+  --accent-2-soft: rgba(34, 211, 184, 0.16);
+  --gold: #ffc857;
+
+  --text: #f5f5f7;
+  --text-muted: rgba(245, 245, 247, 0.56);
+  --text-faint: rgba(245, 245, 247, 0.32);
+
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+}
+
+/* Ambient aurora glow — the app's signature backdrop.
+   Fixed behind all content, very low opacity, heavily
+   blurred. Mount one <div className="aurora-bg" /> near
+   the root of the page (see page.tsx). */
+.aurora-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.aurora-bg::before,
+.aurora-bg::after {
+  content: "";
+  position: absolute;
+  width: 60vw;
+  height: 60vw;
+  border-radius: 9999px;
+  filter: blur(120px);
+  opacity: 0.16;
+}
+
+.aurora-bg::before {
+  top: -20vw;
+  left: -10vw;
+  background: var(--accent);
+}
+
+.aurora-bg::after {
+  bottom: -25vw;
+  right: -15vw;
+  background: var(--accent-2);
+}
+
+/* Glass panel — the base surface for cards throughout the app.
+   Use alongside Tailwind spacing/layout classes, e.g.:
+   className="glass-panel p-6" */
+.glass-panel {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.06) inset,
+    0 20px 40px -24px rgba(0, 0, 0, 0.6);
+  transition:
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    transform 0.25s ease;
+}
+
+.glass-panel:hover {
+  border-color: var(--border-strong);
+}
+
+/* Add alongside glass-panel for cards that should lift on hover
+   (search result cards, continue-watching cards, etc). */
+.glass-panel-interactive:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.08) inset,
+    0 24px 48px -20px rgba(0, 0, 0, 0.7),
+    0 0 0 1px var(--accent-soft);
+}
+
+/* Refined scrollbar, app-wide */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+/* Small uppercase label, used above headings */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* Gradient text for hero numbers / headline accents */
+.gradient-text {
+  background: linear-gradient(
+    135deg,
+    var(--accent) 0%,
+    var(--accent-2) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
