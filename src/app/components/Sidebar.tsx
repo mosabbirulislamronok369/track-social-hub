@@ -253,139 +253,170 @@ export default function Sidebar({
   onSelect,
   userEmail,
   onSignOut,
+  mobileOpen = false,
+  onMobileClose,
 }: {
   active: SidebarSection;
   onSelect: (section: SidebarSection) => void;
   userEmail?: string | null;
   onSignOut: () => void;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
 
+  function handleSelect(section: SidebarSection) {
+    onSelect(section);
+
+    if (onMobileClose) {
+      onMobileClose();
+    }
+  }
+
   return (
-    <aside
-      className={`sticky top-0 z-20 flex h-screen flex-col border-r border-white/[0.07] bg-[#08080f]/70 backdrop-blur-2xl transition-all duration-300 ${
-        collapsed ? "w-[76px]" : "w-64"
-      }`}
-    >
-      {/* BRAND */}
-      <div className="flex items-center gap-3 px-5 py-6">
-        <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(135deg,var(--accent)_0%,var(--accent-2)_100%)] font-black text-white shadow-[0_8px_24px_-8px_var(--accent-soft)]">
-          <span className="relative z-10">T</span>
-          <span className="absolute inset-0 rounded-xl bg-white/20 opacity-0 blur-md transition-opacity duration-300 hover:opacity-40" />
+    <>
+      {/* MOBILE BACKDROP — tap outside to close */}
+      {mobileOpen && (
+        <div
+          onClick={onMobileClose}
+          className="fixed inset-0 z-30 bg-black/70 backdrop-blur-sm md:hidden"
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 flex h-screen flex-col border-r border-white/[0.07] bg-[#08080f]/95 backdrop-blur-2xl transition-transform duration-300 md:sticky md:top-0 md:z-20 md:translate-x-0 md:bg-[#08080f]/70 ${
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        } ${collapsed ? "md:w-[76px]" : "md:w-64"} w-72`}
+      >
+        {/* BRAND */}
+        <div className="flex items-center gap-3 px-5 py-6">
+          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(135deg,var(--accent)_0%,var(--accent-2)_100%)] font-black text-white shadow-[0_8px_24px_-8px_var(--accent-soft)]">
+            <span className="relative z-10">T</span>
+            <span className="absolute inset-0 rounded-xl bg-white/20 opacity-0 blur-md transition-opacity duration-300 hover:opacity-40" />
+          </div>
+
+          {!collapsed && (
+            <div className="min-w-0">
+              <span className="block truncate text-[15px] font-bold tracking-tight text-white">
+                track-social-hub
+              </span>
+              <span className="eyebrow block">personal watch data</span>
+            </div>
+          )}
+
+          {/* MOBILE CLOSE BUTTON */}
+          <button
+            type="button"
+            onClick={onMobileClose}
+            className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white/50 hover:bg-white/[0.06] hover:text-white md:hidden"
+          >
+            ✕
+          </button>
         </div>
 
-        {!collapsed && (
-          <div className="min-w-0">
-            <span className="block truncate text-[15px] font-bold tracking-tight text-white">
-              track-social-hub
-            </span>
-            <span className="eyebrow block">personal watch data</span>
-          </div>
-        )}
-      </div>
+        <div className="mx-5 mb-2 h-px bg-gradient-to-r from-white/[0.09] via-white/[0.03] to-transparent" />
 
-      <div className="mx-5 mb-2 h-px bg-gradient-to-r from-white/[0.09] via-white/[0.03] to-transparent" />
+        {/* NAV */}
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
+          {NAV_ITEMS.map((item) => {
+            const isActive = active === item.id;
 
-      {/* NAV */}
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
-        {NAV_ITEMS.map((item) => {
-          const isActive = active === item.id;
-
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onSelect(item.id)}
-              title={item.label}
-              className={`group relative flex w-full items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2.5 text-sm font-semibold transition-all duration-200 ${
-                isActive
-                  ? "bg-[var(--accent-soft)] text-white"
-                  : "text-white/45 hover:bg-white/[0.05] hover:text-white/85"
-              }`}
-            >
-              {isActive && (
-                <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-[linear-gradient(180deg,var(--accent)_0%,var(--accent-2)_100%)] shadow-[0_0_12px_1px_var(--accent-soft)]" />
-              )}
-
-              <span
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => handleSelect(item.id)}
+                title={item.label}
+                className={`group relative flex w-full items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2.5 text-sm font-semibold transition-all duration-200 ${
                   isActive
-                    ? "bg-white/[0.08] text-[var(--accent-2)]"
-                    : "text-white/35 group-hover:text-white/70"
+                    ? "bg-[var(--accent-soft)] text-white"
+                    : "text-white/45 hover:bg-white/[0.05] hover:text-white/85"
                 }`}
               >
-                {item.icon}
+                {isActive && (
+                  <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-[linear-gradient(180deg,var(--accent)_0%,var(--accent-2)_100%)] shadow-[0_0_12px_1px_var(--accent-soft)]" />
+                )}
+
+                <span
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
+                    isActive
+                      ? "bg-white/[0.08] text-[var(--accent-2)]"
+                      : "text-white/35 group-hover:text-white/70"
+                  }`}
+                >
+                  {item.icon}
+                </span>
+
+                {!collapsed && (
+                  <span className="truncate">{item.label}</span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="mx-5 h-px bg-gradient-to-r from-white/[0.09] via-white/[0.03] to-transparent" />
+
+        {/* USER + COLLAPSE */}
+        <div className="p-3">
+          {!collapsed && userEmail && (
+            <div className="mb-2 flex items-center gap-2.5 rounded-[var(--radius-sm)] border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] text-xs font-bold text-[var(--accent-2)]">
+                {userEmail[0]?.toUpperCase()}
+              </div>
+              <span className="truncate text-xs text-white/45">
+                {userEmail}
               </span>
-
-              {!collapsed && (
-                <span className="truncate">{item.label}</span>
-              )}
-            </button>
-          );
-        })}
-      </nav>
-
-      <div className="mx-5 h-px bg-gradient-to-r from-white/[0.09] via-white/[0.03] to-transparent" />
-
-      {/* USER + COLLAPSE */}
-      <div className="p-3">
-        {!collapsed && userEmail && (
-          <div className="mb-2 flex items-center gap-2.5 rounded-[var(--radius-sm)] border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] text-xs font-bold text-[var(--accent-2)]">
-              {userEmail[0]?.toUpperCase()}
             </div>
-            <span className="truncate text-xs text-white/45">
-              {userEmail}
-            </span>
-          </div>
-        )}
+          )}
 
-        <button
-          type="button"
-          onClick={onSignOut}
-          className={`mb-1 flex w-full items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2.5 text-sm font-semibold text-white/45 transition-colors duration-200 hover:bg-red-500/[0.08] hover:text-red-300 ${
-            collapsed ? "justify-center" : ""
-          }`}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            className="h-[18px] w-[18px] shrink-0"
-          >
-            <path
-              d="M9 4H6a2 2 0 00-2 2v12a2 2 0 002 2h3M16 16l4-4-4-4M20 12H9"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-
-          {!collapsed && <span>Sign Out</span>}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setCollapsed((current) => !current)}
-          className="flex w-full items-center justify-center rounded-[var(--radius-sm)] px-3 py-2 text-white/25 transition-colors duration-200 hover:bg-white/[0.05] hover:text-white/60"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            className={`h-4 w-4 transition-transform duration-300 ${
-              collapsed ? "rotate-180" : ""
+          <button
+            type="button"
+            onClick={onSignOut}
+            className={`mb-1 flex w-full items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2.5 text-sm font-semibold text-white/45 transition-colors duration-200 hover:bg-red-500/[0.08] hover:text-red-300 ${
+              collapsed ? "justify-center" : ""
             }`}
           >
-            <path
-              d="M14.5 5l-7 7 7 7"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-      </div>
-    </aside>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              className="h-[18px] w-[18px] shrink-0"
+            >
+              <path
+                d="M9 4H6a2 2 0 00-2 2v12a2 2 0 002 2h3M16 16l4-4-4-4M20 12H9"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+
+            {!collapsed && <span>Sign Out</span>}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setCollapsed((current) => !current)}
+            className="hidden w-full items-center justify-center rounded-[var(--radius-sm)] px-3 py-2 text-white/25 transition-colors duration-200 hover:bg-white/[0.05] hover:text-white/60 md:flex"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              className={`h-4 w-4 transition-transform duration-300 ${
+                collapsed ? "rotate-180" : ""
+              }`}
+            >
+              <path
+                d="M14.5 5l-7 7 7 7"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
+      </aside>
+    </>
   );
 }
