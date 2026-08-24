@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -10,9 +11,13 @@ import { supabase } from "../lib/supabase";
 import {
   RatingEntry,
   deleteRating,
-  fetchAllRatingRows,
+  fetchTopRatings,
   getRatingLabel,
+  searchRatings,
 } from "../lib/ratings";
+
+const TOP_LIMIT = 10;
+const SEARCH_DEBOUNCE_MS = 350;
 
 export default function RatingBoard() {
   const [entries, setEntries] = useState<
@@ -25,21 +30,78 @@ export default function RatingBoard() {
     string | null
   >(null);
 
-  const load = useCallback(async () => {
+  /*
+   * Two view modes, kept deliberately separate from the
+   * Supabase-cost point of view:
+   *  - "top": default view, loads once (capped) — this is
+   *    what renders on page load and after any add/remove.
+   *  - "search": only fires a query when the user actually
+   *    types something; an empty box never hits the table.
+   */
+  const [searchQuery, setSearchQuery] = useState("");
+  const isSearching = searchQuery.trim().length > 0;
+
+  const debounceRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+
+  const loadTop = useCallback(async () => {
     setLoading(true);
 
-    const rows = await fetchAllRatingRows();
+    const rows = await fetchTopRatings(TOP_LIMIT);
 
     setEntries(rows);
     setLoading(false);
   }, []);
 
-  useEffect(() => {
-    load();
+  const runSearch = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      return;
+    }
 
+    setLoading(true);
+
+    const rows = await searchRatings(query);
+
+    setEntries(rows);
+    setLoading(false);
+  }, []);
+
+  // Initial load — top rated only.
+  useEffect(() => {
+    loadTop();
+  }, [loadTop]);
+
+  // Debounced search — only queries once typing settles.
+  useEffect(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    if (!searchQuery.trim()) {
+      // Back to the idle/top view — no query fired.
+      loadTop();
+      return;
+    }
+
+    debounceRef.current = setTimeout(() => {
+      runSearch(searchQuery);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
+
+  useEffect(() => {
     /*
      * Keep this page in sync if a rating is
-     * added/changed from a card elsewhere.
+     * added/changed from a card elsewhere. Re-runs
+     * whichever view (top or search) is currently active
+     * instead of always pulling the full table.
      */
     const channel = supabase
       .channel("rating-board")
@@ -51,7 +113,11 @@ export default function RatingBoard() {
           table: "ratings",
         },
         () => {
-          load();
+          if (searchQuery.trim()) {
+            runSearch(searchQuery);
+          } else {
+            loadTop();
+          }
         },
       )
       .subscribe();
@@ -59,7 +125,8 @@ export default function RatingBoard() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [load]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
 
   async function handleRemove(contentId: string) {
     setRemovingId(contentId);
@@ -67,7 +134,11 @@ export default function RatingBoard() {
     try {
       await deleteRating(contentId);
 
-      await load();
+      if (searchQuery.trim()) {
+        await runSearch(searchQuery);
+      } else {
+        await loadTop();
+      }
     } catch (err) {
       alert(
         err instanceof Error
@@ -81,14 +152,27 @@ export default function RatingBoard() {
 
   return (
     <section className="mx-auto w-full max-w-5xl px-4 py-10 text-white">
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-4xl font-bold tracking-tight">
           Rating Board
         </h1>
 
         <p className="mt-2 text-white/50">
-          Everything you've rated — best to worst.
+          {isSearching
+            ? "Search results — matching titles."
+            : `Your top ${TOP_LIMIT} rated — best first. Search below to find anything else.`}
         </p>
+      </div>
+
+      <div className="mb-8">
+        <input
+          value={searchQuery}
+          onChange={(event) =>
+            setSearchQuery(event.target.value)
+          }
+          placeholder="Search your rated titles..."
+          className="h-11 w-full max-w-md rounded-xl border border-white/10 bg-white/[0.03] px-4 text-sm text-white outline-none placeholder:text-white/30 focus:border-purple-400/60"
+        />
       </div>
 
       {loading && (
@@ -97,7 +181,19 @@ export default function RatingBoard() {
         </p>
       )}
 
-      {!loading && entries.length === 0 && (
+      {!loading && entries.length === 0 && isSearching && (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-12 text-center">
+          <p className="text-lg font-semibold">
+            No matches
+          </p>
+
+          <p className="mt-2 text-sm text-white/40">
+            Nothing you've rated matches "{searchQuery.trim()}".
+          </p>
+        </div>
+      )}
+
+      {!loading && entries.length === 0 && !isSearching && (
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-12 text-center">
           <p className="text-lg font-semibold">
             No ratings yet

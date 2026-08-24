@@ -139,6 +139,92 @@ export async function fetchAllRatingRows(): Promise<
 }
 
 /*
+ * Loads only the top-rated rows (best -> worst), capped at
+ * `limit`. This is what the Rating Board shows by default so
+ * it never has to pull the whole `ratings` table just to
+ * render the page.
+ */
+export async function fetchTopRatings(
+  limit = 10,
+): Promise<RatingEntry[]> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("ratings")
+    .select(
+      "content_id,category,title,image,rating,updated_at",
+    )
+    .eq("user_id", user.id)
+    .order("rating", { ascending: false })
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error(
+      "Failed to load top ratings:",
+      error,
+    );
+
+    return [];
+  }
+
+  return data ?? [];
+}
+
+/*
+ * Searches the current user's rated content by title.
+ * Only runs when there's an actual query — an empty/blank
+ * query returns [] without hitting Supabase at all, so idle
+ * typing costs nothing.
+ */
+export async function searchRatings(
+  query: string,
+  limit = 25,
+): Promise<RatingEntry[]> {
+  const trimmed = query.trim();
+
+  if (!trimmed) {
+    return [];
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("ratings")
+    .select(
+      "content_id,category,title,image,rating,updated_at",
+    )
+    .eq("user_id", user.id)
+    .ilike("title", `%${trimmed}%`)
+    .order("rating", { ascending: false })
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error(
+      "Failed to search ratings:",
+      error,
+    );
+
+    return [];
+  }
+
+  return data ?? [];
+}
+
+/*
  * Creates or updates a rating for a piece of content.
  * One row per (user_id, content_id) — rating again just
  * updates the existing row.
