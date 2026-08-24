@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -396,14 +397,31 @@ export default function Dashboard() {
      LOAD CONTINUE WATCHING
   ============================================================ */
 
+  /*
+   * loadContinueWatching() gets triggered from several places
+   * at once — the watchlist_items realtime channel, the 10s
+   * poll, a custom event, AND our own optimistic-update flows.
+   * Those fetches can resolve out of order: an older, slower
+   * request can come back AFTER a newer one and stomp on
+   * fresher state with stale data (e.g. the episode count
+   * flashing back to an old number right after "Mark Next
+   * Episode"). This ref tags each fetch with an id and only
+   * applies the result if it's still the most recent one.
+   */
+  const continueWatchingRequestId = useRef(0);
+
   const loadContinueWatching = useCallback(async () => {
+    const requestId = ++continueWatchingRequestId.current;
+
     try {
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
       if (!user) {
-        setContinueWatchingLoading(false);
+        if (requestId === continueWatchingRequestId.current) {
+          setContinueWatchingLoading(false);
+        }
         return;
       }
 
@@ -416,6 +434,13 @@ export default function Dashboard() {
         .in("status", CONTINUE_WATCHING_STATUSES)
         .order("updated_at", { ascending: false })
         .limit(12);
+
+      // A newer request has already started (or finished)
+      // since this one was issued — discard this stale result
+      // instead of overwriting fresher state with it.
+      if (requestId !== continueWatchingRequestId.current) {
+        return;
+      }
 
       if (error) {
         console.error(
@@ -447,7 +472,9 @@ export default function Dashboard() {
     } catch (error) {
       console.error("Continue watching error:", error);
     } finally {
-      setContinueWatchingLoading(false);
+      if (requestId === continueWatchingRequestId.current) {
+        setContinueWatchingLoading(false);
+      }
     }
   }, []);
 
@@ -585,10 +612,17 @@ export default function Dashboard() {
           );
         }
 
+        /*
+         * current_episode is no longer written here — setEpisodeWatched()
+         * (called above) already recomputes it from episode_progress via
+         * syncWatchlistProgress(), which is the real source of truth.
+         * Writing it again here from `nextEpisode` could race with (and
+         * overwrite) that recompute, or drift out of sync with it, so
+         * this call only touches `status`.
+         */
         const { error: watchlistError } = await supabase
           .from("watchlist_items")
           .update({
-            current_episode: nextEpisode,
             status: isNowComplete ? "completed" : "watching",
             updated_at: new Date().toISOString(),
           })

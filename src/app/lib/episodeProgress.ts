@@ -205,6 +205,60 @@ export async function setEpisodeWatched(
     category,
     episode.name /* unused, kept for future title updates */,
   );
+
+  await syncWatchlistProgress(contentId);
+}
+
+/*
+ * Recomputes watchlist_items.current_episode from the ACTUAL
+ * count of watched rows in episode_progress (the real source
+ * of truth) and writes it back.
+ *
+ * Called from every place that marks an episode watched
+ * (EpisodeTracker's checkboxes AND Dashboard's "Mark Next
+ * Episode" button) so the two flows can never drift apart —
+ * previously only Dashboard wrote to watchlist_items.current_episode
+ * directly, so progress made via EpisodeTracker's checkboxes
+ * never showed up in the Continue Watching card.
+ */
+export async function syncWatchlistProgress(contentId: string) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("episode_progress")
+    .select("episode_number")
+    .eq("user_id", user.id)
+    .eq("content_id", contentId)
+    .eq("watched", true);
+
+  if (error) {
+    console.error("Failed to recompute watchlist progress:", error);
+    return;
+  }
+
+  const watchedCount = (data ?? []).length;
+
+  const { error: updateError } = await supabase
+    .from("watchlist_items")
+    .update({
+      current_episode: watchedCount,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", user.id)
+    .eq("content_id", contentId);
+
+  if (updateError) {
+    // Not every watched content_id necessarily has a
+    // watchlist_items row (e.g. private tracking) — log but
+    // don't throw, this is a best-effort display sync.
+    console.error("Failed to sync watchlist current_episode:", updateError);
+  }
 }
 
 /*
