@@ -36,11 +36,16 @@ export default function WatchEngine({
     secondsRef.current = seconds;
   }, [seconds]);
 
-  // Format seconds -> 0h 0m 0s
+  // Format seconds -> 0d 0h 0m (rolls into days for long sessions)
   function formatTime(totalSeconds: number) {
-    const h = Math.floor(totalSeconds / 3600);
+    const d = Math.floor(totalSeconds / 86400);
+    const h = Math.floor((totalSeconds % 86400) / 3600);
     const m = Math.floor((totalSeconds % 3600) / 60);
     const s = totalSeconds % 60;
+
+    if (d > 0) {
+      return `${d}d ${h}h ${m}m`;
+    }
 
     if (h > 0) {
       return `${h}h ${m}m ${s}s`;
