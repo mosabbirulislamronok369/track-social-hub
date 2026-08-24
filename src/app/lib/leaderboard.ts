@@ -15,12 +15,40 @@ export type LeaderboardEntry = {
 
 type RawRow = {
   user_id: string;
-  display_name: string;
   category: string;
   total_seconds: number;
 };
 
-function groupByCategory(rows: RawRow[]) {
+async function fetchDisplayNamesByIds(
+  ids: string[],
+): Promise<Record<string, string>> {
+  const uniqueIds = [...new Set(ids)];
+
+  if (uniqueIds.length === 0) {
+    return {};
+  }
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id,name")
+    .in("id", uniqueIds);
+
+  if (error) {
+    throw error;
+  }
+
+  return Object.fromEntries(
+    (data || []).map((profile) => [
+      profile.id,
+      profile.name?.trim() || "User",
+    ]),
+  );
+}
+
+function groupByCategory(
+  rows: RawRow[],
+  displayNames: Record<string, string>,
+) {
   const byUser: Record <
     string,
     { displayName: string; perCategory: Record<string, number> }
@@ -29,7 +57,7 @@ function groupByCategory(rows: RawRow[]) {
   for (const row of rows) {
     if (!byUser[row.user_id]) {
       byUser[row.user_id] = {
-        displayName: row.display_name,
+        displayName: displayNames[row.user_id] || "User",
         perCategory: {},
       };
     }
@@ -77,7 +105,12 @@ export async function fetchGlobalLeaderboard(
     throw error;
   }
 
-  return toRankedEntries(groupByCategory((data || []) as RawRow[]), category);
+  const rows = (data || []) as RawRow[];
+  const displayNames = await fetchDisplayNamesByIds(
+    rows.map((row) => row.user_id),
+  );
+
+  return toRankedEntries(groupByCategory(rows, displayNames), category);
 }
 
 export async function fetchFriendsLeaderboard(
@@ -91,5 +124,10 @@ export async function fetchFriendsLeaderboard(
     throw error;
   }
 
-  return toRankedEntries(groupByCategory((data || []) as RawRow[]), category);
+  const rows = (data || []) as RawRow[];
+  const displayNames = await fetchDisplayNamesByIds(
+    rows.map((row) => row.user_id),
+  );
+
+  return toRankedEntries(groupByCategory(rows, displayNames), category);
 }
