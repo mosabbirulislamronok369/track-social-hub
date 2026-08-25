@@ -8,11 +8,19 @@ import {
 } from "react";
 import { supabase } from "../lib/supabase";
 
+/*
+ * Must match the Postgres CHECK constraint on
+ * private_watchlist.status exactly (case-sensitive):
+ *   CHECK (status = ANY (ARRAY['Watching','Completed','Paused','Dropped']))
+ * Any value outside this set — including a different casing —
+ * makes every insert/update fail with a 23514 constraint
+ * violation.
+ */
 type PrivateStatus =
-  | "watching"
-  | "hold"
-  | "dropped"
-  | "completed";
+  | "Watching"
+  | "Paused"
+  | "Dropped"
+  | "Completed";
 
 type PrivateItem = {
   id: string;
@@ -107,7 +115,7 @@ function getStoredItems(): PrivateItem[] {
         item.totalWatchSeconds || 0,
       ),
       status:
-        item.status || "watching",
+        item.status || "Watching",
     }));
   } catch {
     return [];
@@ -131,16 +139,16 @@ function saveStoredItems(items: PrivateItem[]) {
 
 function statusLabel(status: PrivateStatus) {
   switch (status) {
-    case "watching":
+    case "Watching":
       return "Watching";
 
-    case "hold":
-      return "Hold";
+    case "Paused":
+      return "Paused";
 
-    case "dropped":
+    case "Dropped":
       return "Dropped";
 
-    case "completed":
+    case "Completed":
       return "Completed";
 
     default:
@@ -150,16 +158,16 @@ function statusLabel(status: PrivateStatus) {
 
 function statusClass(status: PrivateStatus) {
   switch (status) {
-    case "watching":
+    case "Watching":
       return "text-blue-300 bg-blue-500/10 border-blue-400/20";
 
-    case "hold":
+    case "Paused":
       return "text-yellow-300 bg-yellow-500/10 border-yellow-400/20";
 
-    case "dropped":
+    case "Dropped":
       return "text-red-300 bg-red-500/10 border-red-400/20";
 
-    case "completed":
+    case "Completed":
       return "text-emerald-300 bg-emerald-500/10 border-emerald-400/20";
 
     default:
@@ -404,7 +412,7 @@ export default function PrivateWatchlist() {
           title: cleanTitle,
           runtime_seconds: runtimeSeconds,
           watched_seconds: 0,
-          status: "watching",
+          status: "Watching",
           created_at: now,
           updated_at: now,
         })
@@ -420,7 +428,7 @@ export default function PrivateWatchlist() {
         title: cleanTitle,
         runtimeMinutes,
         watchedSeconds: 0,
-        status: "watching",
+        status: "Watching",
         createdAt: now,
         totalWatchSeconds: 0,
       };
@@ -487,7 +495,7 @@ export default function PrivateWatchlist() {
        *
        * So total becomes exactly 60 min.
        */
-      if (status === "completed") {
+      if (status === "Completed") {
         const runtimeSeconds =
           Math.floor(
             Number(item.runtimeMinutes || 0) * 60,
@@ -524,7 +532,7 @@ export default function PrivateWatchlist() {
           .from("private_watchlist")
           .update({
             watched_seconds: runtimeSeconds,
-            status: "completed",
+            status: "Completed",
             updated_at: userNow,
           })
           .eq("id", item.id)
@@ -541,7 +549,7 @@ export default function PrivateWatchlist() {
                   ...current,
                   watchedSeconds:
                     runtimeSeconds,
-                  status: "completed" as const,
+                  status: "Completed" as const,
                   totalWatchSeconds:
                     totalSeconds,
                 }
@@ -673,7 +681,7 @@ export default function PrivateWatchlist() {
         .from("private_watchlist")
         .update({
           watched_seconds: 0,
-          status: "watching",
+          status: "Watching",
           updated_at:
             new Date().toISOString(),
         })
@@ -698,7 +706,7 @@ export default function PrivateWatchlist() {
                 ...current,
                 watchedSeconds: 0,
                 status:
-                  "watching" as const,
+                  "Watching" as const,
                 totalWatchSeconds:
                   totalSeconds,
               }
@@ -1037,7 +1045,7 @@ export default function PrivateWatchlist() {
                             onClick={() =>
                               updateStatus(
                                 item,
-                                "watching",
+                                "Watching",
                               )
                             }
                             className="flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm text-white/80 transition hover:bg-white/10"
@@ -1050,12 +1058,12 @@ export default function PrivateWatchlist() {
                             onClick={() =>
                               updateStatus(
                                 item,
-                                "hold",
+                                "Paused",
                               )
                             }
                             className="flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm text-yellow-300 transition hover:bg-white/10"
                           >
-                            ⏸ Hold
+                            ⏸ Paused
                           </button>
 
                           <button
@@ -1063,7 +1071,7 @@ export default function PrivateWatchlist() {
                             onClick={() =>
                               updateStatus(
                                 item,
-                                "dropped",
+                                "Dropped",
                               )
                             }
                             className="flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm text-red-300 transition hover:bg-white/10"
@@ -1078,7 +1086,7 @@ export default function PrivateWatchlist() {
                             onClick={() =>
                               updateStatus(
                                 item,
-                                "completed",
+                                "Completed",
                               )
                             }
                             className="flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm text-emerald-300 transition hover:bg-white/10"
