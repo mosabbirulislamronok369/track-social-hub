@@ -724,65 +724,6 @@ export default function Profile() {
           )}
       </div>
 
-      {/* WATCHED CONTENT */}
-      <div className="mt-10">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold">
-            Watched Content
-          </h2>
-
-          <span className="text-xs text-white/40">
-            {watchedItems.length} items
-          </span>
-        </div>
-
-        {watchedLoading && (
-          <p className="text-white/40">
-            Loading watched content...
-          </p>
-        )}
-
-        {!watchedLoading &&
-          watchedItems.length === 0 && (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-10 text-center">
-              <p className="font-semibold">
-                Nothing watched yet
-              </p>
-
-              <p className="mt-2 text-sm text-white/40">
-                Mark something as Completed in
-                Browse or Anime to see it here.
-              </p>
-            </div>
-          )}
-
-        {!watchedLoading &&
-          watchedItems.length > 0 && (
-            <div className="divide-y divide-white/5 overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
-              {watchedItems.map((item) => (
-                <div
-                  key={item.contentId}
-                  className="flex items-center justify-between gap-4 px-4 py-3"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">
-                      {item.title}
-                    </p>
-
-                    <p className="mt-0.5 text-xs text-white/40">
-                      {item.category}
-                    </p>
-                  </div>
-
-                  <span className="shrink-0 text-xs font-semibold text-white/60">
-                    {formatWatchTime(item.totalSeconds)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-      </div>
-
       {/* EDIT MODAL */}
       {editing && (
         <div
