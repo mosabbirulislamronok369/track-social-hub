@@ -80,19 +80,17 @@ type ContinueWatchingItem = {
 
 /*
  * Statuses the 3-dot card menu can move an item to.
- * "completed" and "dropped" are NOT in
- * CONTINUE_WATCHING_STATUSES, so setting either of those
+ * "completed", "dropped", AND "on_hold" are NOT in
+ * CONTINUE_WATCHING_STATUSES, so setting any of those
  * removes the card from this rail entirely (same effect as
  * "Remove", but recorded with a real status instead of a
- * delete). "on_hold" IS in CONTINUE_WATCHING_STATUSES, so the
- * card stays put and just re-labels itself.
+ * delete).
  */
 type CardMenuStatus = "completed" | "on_hold" | "dropped";
 
 const CONTINUE_WATCHING_STATUSES: ContinueWatchingStatus[] = [
   "watching",
   "watchlist",
-  "on_hold",
   "rewatch",
 ];
 
@@ -701,11 +699,11 @@ export default function Dashboard() {
   /* ============================================================
      CARD 3-DOT MENU — Mark Completed / Put on Hold / Drop
 
-     Updates watchlist_items.status. "completed" and "dropped"
-     aren't in CONTINUE_WATCHING_STATUSES, so the optimistic
-     update simply drops the card from this rail (it'll show up
-     wherever the rest of the app lists completed/dropped
-     items). "on_hold" stays in the rail and just re-labels.
+     Updates watchlist_items.status. "completed", "dropped", and
+     "on_hold" aren't in CONTINUE_WATCHING_STATUSES, so the
+     optimistic update simply drops the card from this rail
+     (it'll show up wherever the rest of the app lists
+     completed/dropped/on-hold items).
 
      Total Watch Time (the big number at the top of the
      dashboard) is a straight sum over watch_sessions — it has
