@@ -128,7 +128,6 @@ export type WatchedItem = {
   contentId: string;
   category: string;
   title: string;
-  image: string | null;
   totalSeconds: number;
 };
 
@@ -151,7 +150,7 @@ export async function fetchWatchedContent(): Promise<
   const { data, error } = await supabase
     .from("watch_sessions")
     .select(
-      "content_id,category,title,image,total_seconds",
+      "content_id,category,title,total_seconds",
     )
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
@@ -180,16 +179,11 @@ export async function fetchWatchedContent(): Promise<
       if (!existing.title && row.title) {
         existing.title = row.title;
       }
-
-      if (!existing.image && row.image) {
-        existing.image = row.image;
-      }
     } else {
       map.set(contentId, {
         contentId,
         category: row.category,
         title: row.title || contentId,
-        image: row.image || null,
         totalSeconds: Number(
           row.total_seconds || 0,
         ),

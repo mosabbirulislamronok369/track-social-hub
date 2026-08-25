@@ -143,6 +143,159 @@ function GoalRing({
   );
 }
 
+/*
+ * Colors match the WatchCategory palette used elsewhere in
+ * the app (Dashboard cards, WatchEngine's category prop).
+ */
+const CATEGORY_COLORS: Record<string, string> = {
+  Anime: "#a855f7",
+  TV: "#3b82f6",
+  Movies: "#ec4899",
+  YouTube: "#ef4444",
+  Social: "#22c55e",
+  Private: "#6b7280",
+};
+
+const FALLBACK_SLICE_COLOR = "#94a3b8";
+
+/*
+ * Pie chart showing what percentage of total watch time went
+ * to each content category (Anime / TV / Movies / YouTube /
+ * etc). Pure SVG — one <path> arc per category, no charting
+ * library needed.
+ */
+function CategoryPieChart({
+  data,
+}: {
+  data: { category: string; seconds: number }[];
+}) {
+  const total = data.reduce((sum, d) => sum + d.seconds, 0);
+
+  if (total <= 0) {
+    return (
+      <div className="flex h-36 w-36 shrink-0 items-center justify-center rounded-full border border-dashed border-white/10 text-center text-xs text-white/30">
+        No watch data yet
+      </div>
+    );
+  }
+
+  const cx = 60;
+  const cy = 60;
+  const r = 55;
+
+  const nonZero = data.filter((d) => d.seconds > 0);
+
+  // A single category at 100% degenerates the arc math below
+  // (start point === end point), so just draw a full circle.
+  if (nonZero.length === 1) {
+    const only = nonZero[0];
+
+    return (
+      <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+        <svg viewBox="0 0 120 120" className="h-36 w-36 shrink-0">
+          <circle
+            cx={cx}
+            cy={cy}
+            r={r}
+            fill={
+              CATEGORY_COLORS[only.category] ||
+              FALLBACK_SLICE_COLOR
+            }
+          />
+        </svg>
+
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2 text-sm">
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{
+                backgroundColor:
+                  CATEGORY_COLORS[only.category] ||
+                  FALLBACK_SLICE_COLOR,
+              }}
+            />
+            <span className="text-white/70">
+              {only.category}
+            </span>
+            <span className="font-semibold text-white/90">
+              100%
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  let cumulativeAngle = -90; // start at 12 o'clock
+
+  const slices = data
+    .filter((d) => d.seconds > 0)
+    .map((d) => {
+      const percent = (d.seconds / total) * 100;
+      const angle = (d.seconds / total) * 360;
+
+      const startAngle = cumulativeAngle;
+      const endAngle = cumulativeAngle + angle;
+      cumulativeAngle = endAngle;
+
+      const largeArc = angle > 180 ? 1 : 0;
+
+      const startRad = (startAngle * Math.PI) / 180;
+      const endRad = (endAngle * Math.PI) / 180;
+
+      const x1 = cx + r * Math.cos(startRad);
+      const y1 = cy + r * Math.sin(startRad);
+      const x2 = cx + r * Math.cos(endRad);
+      const y2 = cy + r * Math.sin(endRad);
+
+      const path = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+
+      return {
+        category: d.category,
+        percent,
+        path,
+        color:
+          CATEGORY_COLORS[d.category] || FALLBACK_SLICE_COLOR,
+      };
+    });
+
+  return (
+    <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+      <svg viewBox="0 0 120 120" className="h-36 w-36 shrink-0">
+        {slices.map((slice) => (
+          <path
+            key={slice.category}
+            d={slice.path}
+            fill={slice.color}
+            stroke="#0a0a12"
+            strokeWidth="1.5"
+          />
+        ))}
+      </svg>
+
+      <div className="flex flex-col gap-2">
+        {slices.map((slice) => (
+          <div
+            key={slice.category}
+            className="flex items-center gap-2 text-sm"
+          >
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{ backgroundColor: slice.color }}
+            />
+            <span className="text-white/70">
+              {slice.category}
+            </span>
+            <span className="font-semibold text-white/90">
+              {slice.percent.toFixed(1)}%
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Profile() {
   const [profile, setProfile] =
     useState<ProfileType | null>(null);
@@ -306,6 +459,28 @@ export default function Profile() {
     );
   }, [watchedItems]);
 
+  /*
+   * Groups watched content by category and sums watch time
+   * per category, for the "what have I watched most" pie
+   * chart. Sorted so the biggest slice comes first (both for
+   * the legend and so the pie starts big-to-small at 12
+   * o'clock).
+   */
+  const categoryBreakdown = useMemo(() => {
+    const totals = new Map<string, number>();
+
+    watchedItems.forEach((item) => {
+      totals.set(
+        item.category,
+        (totals.get(item.category) || 0) + item.totalSeconds,
+      );
+    });
+
+    return Array.from(totals.entries())
+      .map(([category, seconds]) => ({ category, seconds }))
+      .sort((a, b) => b.seconds - a.seconds);
+  }, [watchedItems]);
+
   const lifePercentWatched = useMemo(() => {
     if (!age || age.totalSeconds <= 0) {
       return 0;
@@ -414,6 +589,17 @@ export default function Profile() {
         </p>
       )}
 
+      {/* CATEGORY BREAKDOWN PIE CHART */}
+      {!watchedLoading && categoryBreakdown.length > 0 && (
+        <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+          <h2 className="mb-5 text-lg font-bold">
+            Watch Breakdown
+          </h2>
+
+          <CategoryPieChart data={categoryBreakdown} />
+        </div>
+      )}
+
       {/* WATCHED CONTENT */}
       <div className="mt-10">
         <div className="mb-4 flex items-center justify-between">
@@ -448,39 +634,25 @@ export default function Profile() {
 
         {!watchedLoading &&
           watchedItems.length > 0 && (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+            <div className="divide-y divide-white/5 overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
               {watchedItems.map((item) => (
                 <div
                   key={item.contentId}
-                  className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]"
+                  className="flex items-center justify-between gap-4 px-4 py-3"
                 >
-                  <div className="aspect-[2/3] w-full bg-black">
-                    {item.image ? (
-                      <img
-                        src={item.image}
-                        alt={item.title}
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-xs text-white/30">
-                        No Image
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="p-2.5">
-                    <p className="line-clamp-2 text-xs font-semibold leading-4">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">
                       {item.title}
                     </p>
 
-                    <p className="mt-1.5 text-[11px] text-white/40">
-                      {item.category} ·{" "}
-                      {formatWatchTime(
-                        item.totalSeconds,
-                      )}
+                    <p className="mt-0.5 text-xs text-white/40">
+                      {item.category}
                     </p>
                   </div>
+
+                  <span className="shrink-0 text-xs font-semibold text-white/60">
+                    {formatWatchTime(item.totalSeconds)}
+                  </span>
                 </div>
               ))}
             </div>
