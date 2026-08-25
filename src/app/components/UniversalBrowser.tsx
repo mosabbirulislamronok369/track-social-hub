@@ -9,7 +9,13 @@ import {
 import { supabase } from "../lib/supabase";
 import RatingStars from "./RatingStars";
 import EpisodeTracker from "./EpisodeTracker";
-import { fetchAllRatings, upsertRating } from "../lib/ratings";
+import {
+  fetchAllRatings,
+  fetchRatingStats,
+  RatingStats,
+  upsertRating,
+} from "../lib/ratings";
+import RatingDistribution from "./RatingDistribution";
 import RecommendModal from "./RecommendModal";
 
 /* ============================================================
@@ -801,6 +807,16 @@ export default function UniversalBrowser() {
     Record<string, number>
   >({});
 
+  /*
+   * Aggregate (all-users) rating stats, keyed by contentId.
+   * Fetched in one batch call per results page/channel load
+   * via fetchRatingStats — never per card — so it stays cheap
+   * regardless of how many people have rated something.
+   */
+  const [ratingStats, setRatingStats] = useState<
+    Record<string, RatingStats>
+  >({});
+
   const [menuOpen, setMenuOpen] = useState<
     string | null
   >(null);
@@ -990,6 +1006,24 @@ export default function UniversalBrowser() {
         setItems(result.items);
         setHasNextPage(result.hasNextPage);
 
+        /*
+         * One batch call for the whole page of results —
+         * not one per card — so community rating stats stay
+         * cheap no matter how many items are on screen.
+         */
+        if (result.items.length > 0) {
+          fetchRatingStats(
+            result.items.map((resultItem) =>
+              getContentId(resultItem, type),
+            ),
+          ).then((stats) => {
+            setRatingStats((current) => ({
+              ...current,
+              ...stats,
+            }));
+          });
+        }
+
         if (result.items.length === 0) {
           setError(
             `No ${type} results found for "${query}".`,
@@ -1102,6 +1136,19 @@ export default function UniversalBrowser() {
         }));
 
         setChannelVideos(videos);
+
+        if (videos.length > 0) {
+          fetchRatingStats(
+            videos.map((video) =>
+              getContentId(video, "YouTube"),
+            ),
+          ).then((stats) => {
+            setRatingStats((current) => ({
+              ...current,
+              ...stats,
+            }));
+          });
+        }
 
         if (videos.length === 0) {
           setChannelVideosError(
@@ -2047,6 +2094,14 @@ export default function UniversalBrowser() {
                             />
                           </div>
 
+                          <div className="mt-1.5">
+                            <RatingDistribution
+                              stats={
+                                ratingStats[videoContentId]
+                              }
+                            />
+                          </div>
+
                           <div className="mt-3 grid grid-cols-2 gap-2">
                             <button
                               type="button"
@@ -2536,6 +2591,13 @@ export default function UniversalBrowser() {
                         />
                       </div>
 
+                      {/* EVERYONE'S RATING */}
+                      <div className="mt-2">
+                        <RatingDistribution
+                          stats={ratingStats[contentId]}
+                        />
+                      </div>
+
                       {/* ACTIONS */}
                       <div className="mt-4 grid gap-2">
                         {status === "completed" ? (
@@ -2825,6 +2887,25 @@ export default function UniversalBrowser() {
                         contentType,
                         value,
                       )
+                    }
+                    size="large"
+                  />
+                </div>
+
+                {/* EVERYONE'S RATING */}
+                <div className="mt-4">
+                  <h3 className="mb-2 text-sm font-semibold text-white/60">
+                    Everyone's Rating
+                  </h3>
+
+                  <RatingDistribution
+                    stats={
+                      ratingStats[
+                        getContentId(
+                          selectedItem,
+                          contentType,
+                        )
+                      ]
                     }
                     size="large"
                   />

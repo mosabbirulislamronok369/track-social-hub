@@ -266,6 +266,67 @@ export async function upsertRating(params: {
   }
 }
 
+/* ============================================================
+   AGGREGATE RATING STATS (all users, storage-light)
+============================================================ */
+
+export type RatingStats = {
+  contentId: string;
+  totalRatings: number;
+  avgRating: number;
+  distribution: Record<number, number>;
+};
+
+/*
+ * Batch-fetches aggregate rating stats (avg + 1-10 distribution)
+ * for a set of content IDs via the get_rating_stats RPC.
+ *
+ * This hits a Postgres function that does the aggregation
+ * server-side and returns ONE row per content_id (never raw
+ * per-user rows) — so a grid of 20 cards costs one request
+ * with 20 tiny summary rows, not hundreds of individual
+ * ratings pulled down to average client-side.
+ *
+ * Call this once per visible batch of cards (all content IDs
+ * on screen), not once per card.
+ */
+export async function fetchRatingStats(
+  contentIds: string[],
+): Promise<Record<string, RatingStats>> {
+  const ids = Array.from(new Set(contentIds)).filter(Boolean);
+
+  if (ids.length === 0) {
+    return {};
+  }
+
+  const { data, error } = await supabase.rpc(
+    "get_rating_stats",
+    { p_content_ids: ids },
+  );
+
+  if (error) {
+    console.error(
+      "Failed to load rating stats:",
+      error,
+    );
+
+    return {};
+  }
+
+  const map: Record<string, RatingStats> = {};
+
+  for (const row of data ?? []) {
+    map[row.content_id] = {
+      contentId: row.content_id,
+      totalRatings: row.total_ratings,
+      avgRating: Number(row.avg_rating) || 0,
+      distribution: row.distribution || {},
+    };
+  }
+
+  return map;
+}
+
 export async function deleteRating(
   contentId: string,
 ) {
