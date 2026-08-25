@@ -10,15 +10,25 @@ import {
 
 import {
   AgeBreakdown,
+  GroupedProfileWatchlist,
   Profile as ProfileType,
+  ProfileWatchStatus,
   WatchedItem,
   computeAge,
+  fetchGroupedProfileWatchlist,
   fetchProfile,
   fetchWatchedContent,
   formatAge,
   saveProfile,
   uploadAvatar,
 } from "../lib/profile";
+
+const STATUS_TABS: { id: ProfileWatchStatus; label: string }[] = [
+  { id: "watching", label: "Watching" },
+  { id: "on_hold", label: "Hold" },
+  { id: "completed", label: "Completed" },
+  { id: "dropped", label: "Dropped" },
+];
 
 function formatWatchTime(totalSeconds: number) {
   const seconds = Math.max(
@@ -308,6 +318,15 @@ export default function Profile() {
   const [watchedLoading, setWatchedLoading] =
     useState(true);
 
+  const [groupedWatchlist, setGroupedWatchlist] =
+    useState<GroupedProfileWatchlist | null>(null);
+
+  const [watchlistLoading, setWatchlistLoading] =
+    useState(true);
+
+  const [activeStatusTab, setActiveStatusTab] =
+    useState<ProfileWatchStatus>("watching");
+
   const [now, setNow] = useState(() => new Date());
 
   const [editing, setEditing] = useState(false);
@@ -349,10 +368,26 @@ export default function Profile() {
     setWatchedLoading(false);
   }, []);
 
+  /*
+   * ONE query for Watching/Hold/Completed/Dropped, grouped
+   * client-side (see fetchGroupedProfileWatchlist). Switching
+   * tabs below only reads from this already-fetched state —
+   * it never fires another Supabase call.
+   */
+  const loadGroupedWatchlist = useCallback(async () => {
+    setWatchlistLoading(true);
+
+    const grouped = await fetchGroupedProfileWatchlist();
+
+    setGroupedWatchlist(grouped);
+    setWatchlistLoading(false);
+  }, []);
+
   useEffect(() => {
     loadProfile();
     loadWatched();
-  }, [loadProfile, loadWatched]);
+    loadGroupedWatchlist();
+  }, [loadProfile, loadWatched, loadGroupedWatchlist]);
 
   /*
    * Live-ticking clock for the age display.
@@ -599,6 +634,95 @@ export default function Profile() {
           <CategoryPieChart data={categoryBreakdown} />
         </div>
       )}
+
+      {/* WATCHING / HOLD / COMPLETED / DROPPED */}
+      <div className="mt-10">
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+          {STATUS_TABS.map((tab) => {
+            const count =
+              groupedWatchlist?.[tab.id].length ?? 0;
+
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveStatusTab(tab.id)}
+                className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${
+                  activeStatusTab === tab.id
+                    ? "bg-white text-black"
+                    : "text-white/50 hover:text-white/80"
+                }`}
+              >
+                {tab.label}
+                {count > 0 ? ` (${count})` : ""}
+              </button>
+            );
+          })}
+        </div>
+
+        {watchlistLoading && (
+          <p className="text-white/40">Loading...</p>
+        )}
+
+        {!watchlistLoading &&
+          (groupedWatchlist?.[activeStatusTab].length ?? 0) ===
+            0 && (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-10 text-center">
+              <p className="text-sm text-white/40">
+                Nothing in{" "}
+                {
+                  STATUS_TABS.find(
+                    (tab) => tab.id === activeStatusTab,
+                  )?.label
+                }{" "}
+                yet.
+              </p>
+            </div>
+          )}
+
+        {!watchlistLoading &&
+          (groupedWatchlist?.[activeStatusTab].length ?? 0) >
+            0 && (
+            <div className="divide-y divide-white/5 overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
+              {groupedWatchlist![activeStatusTab].map(
+                (item) => (
+                  <div
+                    key={item.contentId}
+                    className="flex items-center justify-between gap-4 px-4 py-3"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      {item.imageUrl && (
+                        <img
+                          src={item.imageUrl}
+                          alt={item.title}
+                          className="h-12 w-9 shrink-0 rounded object-cover"
+                        />
+                      )}
+
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">
+                          {item.title}
+                        </p>
+
+                        <p className="mt-0.5 text-xs text-white/40">
+                          {item.category}
+                        </p>
+                      </div>
+                    </div>
+
+                    {item.currentEpisode != null &&
+                    item.totalEpisodes ? (
+                      <span className="shrink-0 text-xs font-semibold text-white/60">
+                        {item.currentEpisode}/
+                        {item.totalEpisodes} ep
+                      </span>
+                    ) : null}
+                  </div>
+                ),
+              )}
+            </div>
+          )}
+      </div>
 
       {/* WATCHED CONTENT */}
       <div className="mt-10">

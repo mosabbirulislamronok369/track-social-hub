@@ -298,3 +298,108 @@ export function formatAge(
 ): string {
   return `${age.years}y ${age.days}d ${age.hours}h ${age.minutes}m ${age.seconds}s`;
 }
+
+/* ============================================================
+   WATCHLIST STATUS GROUPS (Watching / Hold / Completed / Dropped)
+
+   Statuses match UniversalBrowser.tsx's ItemStatus values
+   exactly ("watching", "on_hold", "completed", "dropped") so
+   this reads the same watchlist_items rows that Browse/Anime
+   already write, no new table or duplicate writes needed.
+============================================================ */
+
+export type ProfileWatchStatus =
+  | "watching"
+  | "on_hold"
+  | "completed"
+  | "dropped";
+
+export type WatchlistItem = {
+  contentId: string;
+  category: string;
+  title: string;
+  imageUrl: string | null;
+  status: ProfileWatchStatus;
+  currentEpisode: number | null;
+  totalEpisodes: number | null;
+};
+
+export type GroupedProfileWatchlist = Record<
+  ProfileWatchStatus,
+  WatchlistItem[]
+>;
+
+const PROFILE_STATUSES: ProfileWatchStatus[] = [
+  "watching",
+  "on_hold",
+  "completed",
+  "dropped",
+];
+
+/*
+ * ONE query, filtered to only the 4 statuses this page shows
+ * (skips "watchlist"/"rewatch" rows entirely — fewer bytes
+ * read, not just fewer round trips) and grouped client-side.
+ * Tab switching after this never re-hits Supabase.
+ */
+export async function fetchGroupedProfileWatchlist(): Promise<GroupedProfileWatchlist> {
+  const empty: GroupedProfileWatchlist = {
+    watching: [],
+    on_hold: [],
+    completed: [],
+    dropped: [],
+  };
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return empty;
+  }
+
+  const { data, error } = await supabase
+    .from("watchlist_items")
+    .select(
+      "content_id,category,title,image_url,status,current_episode,total_episodes",
+    )
+    .eq("user_id", user.id)
+    .in("status", PROFILE_STATUSES)
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    console.error(
+      "Failed to load profile watchlist:",
+      error,
+    );
+
+    return empty;
+  }
+
+  const grouped: GroupedProfileWatchlist = {
+    watching: [],
+    on_hold: [],
+    completed: [],
+    dropped: [],
+  };
+
+  for (const row of data ?? []) {
+    const status = row.status as ProfileWatchStatus;
+
+    if (!grouped[status]) {
+      continue; // ignore anything unexpected
+    }
+
+    grouped[status].push({
+      contentId: row.content_id,
+      category: row.category,
+      title: row.title,
+      imageUrl: row.image_url,
+      status,
+      currentEpisode: row.current_episode ?? null,
+      totalEpisodes: row.total_episodes ?? null,
+    });
+  }
+
+  return grouped;
+}
