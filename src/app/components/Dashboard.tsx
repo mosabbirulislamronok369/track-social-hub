@@ -14,6 +14,7 @@ import {
   fetchTvSeasonBreakdown,
   resolveFlatEpisode,
 } from "../lib/episodeProgress";
+import { fetchTodayQuranLog } from "../lib/quranTrack";
 import WatchTimeChart from "./WatchTimeChart";
 
 type SearchType =
@@ -158,6 +159,28 @@ function formatTime(totalSeconds: number) {
   const minutes = Math.floor((seconds % 3600) / 60);
 
   return `${days}d ${hours}h ${minutes}m`;
+}
+
+/*
+ * Quran card needs finer granularity than formatTime's d/h/m
+ * rollup — most daily reading sessions are under an hour, so
+ * this shows m/s (or h/m for longer ones) instead of "0d 0h 5m".
+ */
+function formatQuranTime(totalSeconds: number) {
+  const seconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+
+  if (minutes > 0) {
+    return `${minutes}m ${secs}s`;
+  }
+
+  return `${secs}s`;
 }
 
 function getPlaceholderImage() {
@@ -341,6 +364,26 @@ export default function Dashboard() {
   const [selectedContentId, setSelectedContentId] = useState<
     string | null
   >(null);
+
+  /*
+   * Today's Quran reading progress (quran_reading_log), shown
+   * as its own card alongside the watch-time stat cards below.
+   */
+  const [quranSeconds, setQuranSeconds] = useState(0);
+  const [quranGoalMinutes, setQuranGoalMinutes] = useState<
+    number | null
+  >(null);
+  const [quranLoading, setQuranLoading] = useState(true);
+
+  const loadQuran = useCallback(async () => {
+    setQuranLoading(true);
+
+    const log = await fetchTodayQuranLog();
+
+    setQuranSeconds(log?.totalSeconds ?? 0);
+    setQuranGoalMinutes(log?.goalMinutes ?? null);
+    setQuranLoading(false);
+  }, []);
 
   /* ============================================================
      LOAD DASHBOARD STATS
@@ -971,6 +1014,7 @@ export default function Dashboard() {
   useEffect(() => {
     loadStats();
     loadContinueWatching();
+    loadQuran();
 
     const statsChannel = supabase
       .channel("dashboard-watch-stats")
@@ -1406,6 +1450,47 @@ export default function Dashboard() {
             </div>
           );
         })}
+      </div>
+
+      {/* QURAN READING (today, quran_reading_log) */}
+
+      <div className="glass-panel mt-4 p-5">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-white">
+            🕌 Quran Reading Today
+          </h3>
+
+          {quranGoalMinutes ? (
+            <span className="text-sm text-white/40">
+              Goal: {quranGoalMinutes}m
+            </span>
+          ) : null}
+        </div>
+
+        <div className="mt-4 text-2xl font-bold text-white">
+          {quranLoading ? "..." : formatQuranTime(quranSeconds)}
+        </div>
+
+        {quranGoalMinutes ? (
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/[0.06]">
+            <div
+              className="h-full rounded-full bg-[linear-gradient(90deg,var(--accent)_0%,var(--accent-2)_100%)] transition-all duration-500"
+              style={{
+                width: `${Math.min(
+                  100,
+                  Math.round(
+                    (quranSeconds / (quranGoalMinutes * 60)) * 100,
+                  ),
+                )}%`,
+              }}
+            />
+          </div>
+        ) : (
+          <p className="mt-3 text-xs text-white/40">
+            Set a goal on the Islamic Track page to see progress
+            here.
+          </p>
+        )}
       </div>
 
       {/* WATCH TIME CHART (weekly breakdown) */}

@@ -24,6 +24,7 @@ import {
   updateWatchlistItemStatus,
   uploadAvatar,
 } from "../lib/profile";
+import { fetchTotalQuranSeconds } from "../lib/quranTrack";
 
 const STATUS_TABS: { id: ProfileWatchStatus; label: string }[] = [
   { id: "watchlist", label: "Plan to Watch" },
@@ -327,6 +328,9 @@ export default function Profile() {
   const [watchlistLoading, setWatchlistLoading] =
     useState(true);
 
+  const [totalQuranSeconds, setTotalQuranSeconds] = useState(0);
+  const [quranLoading, setQuranLoading] = useState(true);
+
   const [activeStatusTab, setActiveStatusTab] =
     useState<ProfileWatchStatus>("watching");
 
@@ -397,11 +401,21 @@ export default function Profile() {
     setWatchlistLoading(false);
   }, []);
 
+  const loadQuranTotal = useCallback(async () => {
+    setQuranLoading(true);
+
+    const seconds = await fetchTotalQuranSeconds();
+
+    setTotalQuranSeconds(seconds);
+    setQuranLoading(false);
+  }, []);
+
   useEffect(() => {
     loadProfile();
     loadWatched();
     loadGroupedWatchlist();
-  }, [loadProfile, loadWatched, loadGroupedWatchlist]);
+    loadQuranTotal();
+  }, [loadProfile, loadWatched, loadGroupedWatchlist, loadQuranTotal]);
 
   /*
    * Moves a card to a new status from the click-to-update menu.
@@ -682,6 +696,15 @@ export default function Profile() {
                     : formatWatchTime(
                         totalWatchSeconds,
                       )}
+                </span>
+              </p>
+
+              <p className="mt-1 text-sm text-white/50">
+                🕌 Quran reading:{" "}
+                <span className="font-semibold text-white/80">
+                  {quranLoading
+                    ? "..."
+                    : formatWatchTime(totalQuranSeconds)}
                 </span>
               </p>
 

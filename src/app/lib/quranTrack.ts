@@ -86,3 +86,121 @@ export async function upsertTodayQuranLog(
     throw error;
   }
 }
+
+/* ============================================================
+   LIFETIME QURAN TOTAL (Profile "Total Quran Reading" stat)
+
+   Sums every quran_reading_log row for the user — the table
+   is one row per user per day, so this is a plain client-side
+   sum, same pattern as fetchTotalWatchSeconds in profile.ts.
+============================================================ */
+
+export async function fetchTotalQuranSeconds(): Promise<number> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return 0;
+  }
+
+  const { data, error } = await supabase
+    .from("quran_reading_log")
+    .select("total_seconds")
+    .eq("user_id", user.id);
+
+  if (error) {
+    console.error("Failed to load total Quran time:", error);
+    return 0;
+  }
+
+  return (data ?? []).reduce(
+    (sum, row) => sum + Number(row.total_seconds ?? 0),
+    0,
+  );
+}
+
+/* ============================================================
+   QURAN LEADERBOARD (Leaderboard.tsx "🕌 Quran" tab)
+
+   Deliberately a standalone fetcher instead of running through
+   lib/leaderboard.ts's get_leaderboard() RPC — that RPC sums
+   watch_sessions by category, and quran_reading_log is a
+   different table/shape. Aggregated client-side (fine: one row
+   per user per day, small table) then joined against `profiles`
+   for display names, same two-step join fetchWatchedContent /
+   fetchProfile already use elsewhere in this codebase.
+============================================================ */
+
+export type QuranLeaderboardEntry = {
+  userId: string;
+  displayName: string;
+  totalSeconds: number;
+};
+
+export async function fetchQuranLeaderboard(
+  friendUserIds?: string[],
+): Promise<QuranLeaderboardEntry[]> {
+  // Friends scope with zero friends — nothing to query.
+  if (friendUserIds && friendUserIds.length === 0) {
+    return [];
+  }
+
+  let query = supabase
+    .from("quran_reading_log")
+    .select("user_id,total_seconds");
+
+  if (friendUserIds) {
+    query = query.in("user_id", friendUserIds);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("Failed to load Quran leaderboard:", error);
+    return [];
+  }
+
+  const totals = new Map<string, number>();
+
+  for (const row of data ?? []) {
+    const userId = String(row.user_id);
+
+    totals.set(
+      userId,
+      (totals.get(userId) ?? 0) + Number(row.total_seconds ?? 0),
+    );
+  }
+
+  const userIds = Array.from(totals.keys());
+
+  if (userIds.length === 0) {
+    return [];
+  }
+
+  const { data: profileRows, error: profileError } = await supabase
+    .from("profiles")
+    .select("id,name")
+    .in("id", userIds);
+
+  if (profileError) {
+    console.error(
+      "Failed to load profiles for Quran leaderboard:",
+      profileError,
+    );
+  }
+
+  const nameById = new Map<string, string>();
+
+  for (const row of profileRows ?? []) {
+    nameById.set(row.id, row.name || "Unnamed");
+  }
+
+  return Array.from(totals.entries())
+    .map(([userId, totalSeconds]) => ({
+      userId,
+      displayName: nameById.get(userId) || "Unnamed",
+      totalSeconds,
+    }))
+    .sort((a, b) => b.totalSeconds - a.totalSeconds);
+}

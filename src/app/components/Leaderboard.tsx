@@ -16,24 +16,36 @@ import {
   searchUsersByEmail,
   sendFriendRequest,
 } from "../lib/friends";
+import { fetchQuranLeaderboard } from "../lib/quranTrack";
 import { supabase } from "../lib/supabase";
 
 type Scope = "global" | "friends";
 
-const CATEGORIES: LeaderboardCategory[] = [
+/*
+ * "Quran" isn't a LeaderboardCategory from lib/leaderboard — it
+ * doesn't come from the watch_sessions-based get_leaderboard()
+ * RPC, it's a separate fetch against quran_reading_log (see
+ * loadLeaderboard below). Kept as a local union so this file
+ * doesn't need to touch lib/leaderboard.ts's type.
+ */
+type DisplayCategory = LeaderboardCategory | "Quran";
+
+const CATEGORIES: DisplayCategory[] = [
   "Total",
   "Movies",
   "TV",
   "Anime",
   "YouTube",
+  "Quran",
 ];
 
-const CATEGORY_LABELS: Record<LeaderboardCategory, string> = {
+const CATEGORY_LABELS: Record<DisplayCategory, string> = {
   Total: "Total",
   Movies: "Movie",
   TV: "TV",
   Anime: "Anime",
   YouTube: "YouTube",
+  Quran: "🕌 Quran",
 };
 
 function formatTime(totalSeconds: number) {
@@ -62,7 +74,7 @@ const MEDALS = ["🥇", "🥈", "🥉"];
 export default function Leaderboard() {
   const [scope, setScope] = useState<Scope>("global");
   const [category, setCategory] =
-    useState<LeaderboardCategory>("Total");
+    useState<DisplayCategory>("Total");
 
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -97,10 +109,33 @@ export default function Leaderboard() {
     setError("");
 
     try {
-      const data =
-        scope === "global"
-          ? await fetchGlobalLeaderboard(category)
-          : await fetchFriendsLeaderboard(category);
+      let data: LeaderboardEntry[];
+
+      if (category === "Quran") {
+        if (scope === "global") {
+          data = await fetchQuranLeaderboard();
+        } else {
+          // Friends scope: fetch the friends list directly
+          // here rather than relying on `friends` state, since
+          // that's only populated when scope is already
+          // "friends" and could still be loading in parallel.
+          const friendsList = await listFriends();
+          const friendIds = friendsList.map(
+            (friend) => friend.id,
+          );
+
+          data = await fetchQuranLeaderboard(
+            currentUserId
+              ? [...friendIds, currentUserId]
+              : friendIds,
+          );
+        }
+      } else {
+        data =
+          scope === "global"
+            ? await fetchGlobalLeaderboard(category)
+            : await fetchFriendsLeaderboard(category);
+      }
 
       setEntries(data);
     } catch (err) {
