@@ -5,12 +5,17 @@ import {
   listRecommendationsForMe,
   markRecommendationWatched,
   deleteRecommendation,
+  addRecommendationToWatchlist,
   type Recommendation,
 } from "../lib/recommendations";
 
 export default function RecommendedPage() {
   const [recs, setRecs] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState<string | null>(
+    null,
+  );
+  const [error, setError] = useState("");
 
   useEffect(() => {
     load();
@@ -28,9 +33,49 @@ export default function RecommendedPage() {
       });
   }
 
-  async function handleMarkWatched(id: string) {
-    await markRecommendationWatched(id);
-    load();
+  /*
+   * Marking watched does two things now: flips the
+   * recommendation's is_watched flag (as before) AND upserts
+   * the title into watchlist_items — the same table Dashboard
+   * reads from — so it actually shows up there instead of only
+   * being marked read here.
+   */
+  async function handleMarkWatched(rec: Recommendation) {
+    if (savingId === rec.id) {
+      return;
+    }
+
+    setSavingId(rec.id);
+    setError("");
+
+    try {
+      await addRecommendationToWatchlist(rec);
+      await markRecommendationWatched(rec.id);
+      load();
+    } catch (err) {
+      console.error(
+        "Failed to mark recommendation watched:",
+        err,
+      );
+
+      // Supabase/Postgrest errors are plain objects, not
+      // Error instances — check both shapes so the real
+      // reason (RLS, constraint, etc.) reaches the user.
+      const message =
+        err instanceof Error
+          ? err.message
+          : err &&
+              typeof err === "object" &&
+              "message" in err &&
+              typeof (err as { message: unknown })
+                .message === "string"
+            ? (err as { message: string }).message
+            : "Failed to mark as watched.";
+
+      setError(message);
+    } finally {
+      setSavingId(null);
+    }
   }
 
   async function handleDelete(id: string) {
@@ -48,6 +93,12 @@ export default function RecommendedPage() {
         <p className="mt-2 text-white/50">
           What your friends think you should watch
         </p>
+
+        {error && (
+          <p className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+            {error}
+          </p>
+        )}
 
         {loading ? (
           <p className="mt-8 text-white/40">Loading...</p>
@@ -83,11 +134,20 @@ export default function RecommendedPage() {
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    disabled={rec.isWatched}
-                    onClick={() => handleMarkWatched(rec.id)}
+                    disabled={
+                      rec.isWatched ||
+                      savingId === rec.id
+                    }
+                    onClick={() =>
+                      handleMarkWatched(rec)
+                    }
                     className="h-9 rounded-lg border border-emerald-400/30 bg-emerald-500/10 text-xs font-semibold text-emerald-300 disabled:opacity-40"
                   >
-                    {rec.isWatched ? "✓ Watched" : "Mark Watched"}
+                    {rec.isWatched
+                      ? "✓ Watched"
+                      : savingId === rec.id
+                        ? "Saving..."
+                        : "Mark Watched"}
                   </button>
 
                   <button

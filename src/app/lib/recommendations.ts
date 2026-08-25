@@ -191,3 +191,133 @@ export async function countUnreadRecommendations(): Promise<number> {
 
   return count || 0;
 }
+
+/*
+ * Best-effort runtime lookup for a recommended Movie/TV title,
+ * via the same /api/tmdb/*-details routes UniversalBrowser
+ * uses (fetchAccurateRuntimeSeconds). Anime/YouTube have no
+ * equivalent lookup here, so those fall back to 0 seconds —
+ * the item still shows up on the Dashboard, just without an
+ * estimated runtime until edited from Browse.
+ */
+async function fetchRecommendationRuntimeSeconds(
+  contentType: string,
+  rawId: string,
+): Promise<number> {
+  try {
+    if (contentType === "Movies") {
+      const res = await fetch(
+        `/api/tmdb/movie-details?id=${encodeURIComponent(rawId)}`,
+        { cache: "no-store" },
+      );
+
+      if (!res.ok) {
+        return 0;
+      }
+
+      const data = await res.json();
+      const runtime = Number(data?.runtime);
+
+      return Number.isFinite(runtime) && runtime > 0
+        ? Math.round(runtime * 60)
+        : 0;
+    }
+
+    if (contentType === "TV") {
+      const res = await fetch(
+        `/api/tmdb/tv-details?id=${encodeURIComponent(rawId)}`,
+        { cache: "no-store" },
+      );
+
+      if (!res.ok) {
+        return 0;
+      }
+
+      const data = await res.json();
+
+      const perEpisodeMinutes = Number(
+        data?.episodeRuntime,
+      );
+      const episodeCount = Number(data?.numberOfEpisodes);
+
+      if (
+        Number.isFinite(perEpisodeMinutes) &&
+        perEpisodeMinutes > 0 &&
+        Number.isFinite(episodeCount) &&
+        episodeCount > 0
+      ) {
+        return Math.round(
+          perEpisodeMinutes * episodeCount * 60,
+        );
+      }
+
+      return 0;
+    }
+  } catch (err) {
+    console.error(
+      "Failed to fetch recommendation runtime:",
+      err,
+    );
+  }
+
+  return 0;
+}
+
+/*
+ * Adds a recommendation onto the Dashboard as a "completed"
+ * watchlist item — same table (watchlist_items) and status
+ * vocabulary ("completed", lowercase) that UniversalBrowser's
+ * saveItemStatus() and Dashboard's markNextEpisode() use, so
+ * it shows up consistently everywhere the Dashboard reads
+ * watchlist_items from.
+ *
+ * contentId already follows the `${type}-${rawId}` convention
+ * (see sendRecommendation's doc comment), so this reuses it
+ * as-is rather than re-deriving it.
+ */
+export async function addRecommendationToWatchlist(
+  recommendation: Pick<
+    Recommendation,
+    "contentType" | "contentId" | "contentTitle" | "posterPath"
+  >,
+): Promise<void> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Please login first.");
+  }
+
+  const prefix = `${recommendation.contentType.toLowerCase()}-`;
+
+  const rawId = recommendation.contentId.startsWith(prefix)
+    ? recommendation.contentId.slice(prefix.length)
+    : recommendation.contentId;
+
+  const estimatedSeconds =
+    await fetchRecommendationRuntimeSeconds(
+      recommendation.contentType,
+      rawId,
+    );
+
+  const { error } = await supabase
+    .from("watchlist_items")
+    .upsert(
+      {
+        user_id: user.id,
+        content_id: recommendation.contentId,
+        category: recommendation.contentType,
+        title: recommendation.contentTitle,
+        image_url: recommendation.posterPath ?? null,
+        status: "completed",
+        estimated_seconds: estimatedSeconds,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,content_id" },
+    );
+
+  if (error) {
+    throw error;
+  }
+}
