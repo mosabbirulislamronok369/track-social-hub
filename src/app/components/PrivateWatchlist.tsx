@@ -49,6 +49,37 @@ function formatTime(totalSeconds: number) {
   return `${minutes}m`;
 }
 
+/*
+ * Supabase/Postgrest errors are plain objects ({ message,
+ * details, hint, code }) — NOT instances of the native Error
+ * class. `error instanceof Error` is always false for them,
+ * so code that only checked that missed the real reason a
+ * query failed (RLS policy, check constraint, bad column,
+ * etc.) and always fell back to a generic message instead.
+ * This checks both shapes so the actual message reaches the
+ * user.
+ */
+function getErrorMessage(
+  error: unknown,
+  fallback: string,
+): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof (error as { message: unknown }).message ===
+      "string"
+  ) {
+    return (error as { message: string }).message;
+  }
+
+  return fallback;
+}
+
 function getStoredItems(): PrivateItem[] {
   if (typeof window === "undefined") {
     return [];
@@ -422,9 +453,10 @@ export default function PrivateWatchlist() {
       );
 
       setMessage(
-        error instanceof Error
-          ? error.message
-          : "Failed to save private content.",
+        getErrorMessage(
+          error,
+          "Failed to save private content.",
+        ),
       );
     } finally {
       setSaving(false);
@@ -577,9 +609,10 @@ export default function PrivateWatchlist() {
       );
 
       setMessage(
-        error instanceof Error
-          ? error.message
-          : "Failed to update status.",
+        getErrorMessage(
+          error,
+          "Failed to update status.",
+        ),
       );
     }
   }
@@ -697,9 +730,10 @@ export default function PrivateWatchlist() {
       );
 
       setMessage(
-        error instanceof Error
-          ? error.message
-          : "Failed to rewatch content.",
+        getErrorMessage(
+          error,
+          "Failed to rewatch content.",
+        ),
       );
     }
   }
@@ -744,9 +778,10 @@ export default function PrivateWatchlist() {
       );
 
       setMessage(
-        error instanceof Error
-          ? error.message
-          : "Failed to remove item.",
+        getErrorMessage(
+          error,
+          "Failed to remove item.",
+        ),
       );
     }
   }

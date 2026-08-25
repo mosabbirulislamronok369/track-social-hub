@@ -13,7 +13,6 @@ import MALImport from "./components/MALImport";
 import TMDBImport from "./components/TMDBImport";
 import IMDBImport from "./components/IMDBImport";
 import PrivateWatchlist from "./components/PrivateWatchlist";
-import PrivateTracker from "./components/PrivateTracker";
 import RatingBoard from "./components/RatingBoard";
 import Profile from "./components/Profile";
 
@@ -129,12 +128,6 @@ export default function Home() {
         {activeSection === "ratings" && <RatingBoard />}
 
         {activeSection === "profile" && <Profile />}
-
-        {activeSection === "tracker" && (
-          <div className="mx-auto w-full max-w-6xl px-4 py-10">
-            <PrivateTracker />
-          </div>
-        )}
 
         {activeSection === "import" && (
           <div className="mx-auto w-full max-w-6xl px-4 py-10">

@@ -8,7 +8,6 @@ export type SidebarSection =
   | "watchlist"
   | "ratings"
   | "profile"
-  | "tracker"
   | "import"
   | "leaderboard"
   | "recommended";
@@ -153,20 +152,6 @@ function IconProfile() {
   );
 }
 
-function IconTracker() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]">
-      <path
-        d="M4 12l5 5 11-11"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function IconImport() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]">
@@ -244,7 +229,6 @@ const NAV_ITEMS: NavItem[] = [
   { id: "watchlist", label: "Watchlist", icon: <IconWatchlist /> },
   { id: "ratings", label: "Ratings", icon: <IconRating /> },
   { id: "profile", label: "Profile", icon: <IconProfile /> },
-  { id: "tracker", label: "Tracker", icon: <IconTracker /> },
   { id: "import", label: "Import", icon: <IconImport /> },
 ];
 
