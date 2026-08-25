@@ -309,6 +309,7 @@ export function formatAge(
 ============================================================ */
 
 export type ProfileWatchStatus =
+  | "watchlist"
   | "watching"
   | "on_hold"
   | "completed"
@@ -330,6 +331,7 @@ export type GroupedProfileWatchlist = Record<
 >;
 
 const PROFILE_STATUSES: ProfileWatchStatus[] = [
+  "watchlist",
   "watching",
   "on_hold",
   "completed",
@@ -337,13 +339,14 @@ const PROFILE_STATUSES: ProfileWatchStatus[] = [
 ];
 
 /*
- * ONE query, filtered to only the 4 statuses this page shows
- * (skips "watchlist"/"rewatch" rows entirely — fewer bytes
- * read, not just fewer round trips) and grouped client-side.
- * Tab switching after this never re-hits Supabase.
+ * ONE query, filtered to only the 5 statuses this page shows
+ * (skips "rewatch" rows entirely — fewer bytes read, not just
+ * fewer round trips) and grouped client-side. Tab switching
+ * after this never re-hits Supabase.
  */
 export async function fetchGroupedProfileWatchlist(): Promise<GroupedProfileWatchlist> {
   const empty: GroupedProfileWatchlist = {
+    watchlist: [],
     watching: [],
     on_hold: [],
     completed: [],
@@ -377,6 +380,7 @@ export async function fetchGroupedProfileWatchlist(): Promise<GroupedProfileWatc
   }
 
   const grouped: GroupedProfileWatchlist = {
+    watchlist: [],
     watching: [],
     on_hold: [],
     completed: [],
@@ -402,4 +406,40 @@ export async function fetchGroupedProfileWatchlist(): Promise<GroupedProfileWatc
   }
 
   return grouped;
+}
+
+/*
+ * Moves one watchlist_items row to a new status (used by the
+ * click-to-update menu on each card in the Watchlist/Watching/
+ * Hold/Completed/Dropped tabs).
+ *
+ * Deliberately a single UPDATE with no follow-up SELECT — the
+ * caller already has the item locally and moves it between
+ * status buckets optimistically, so this doesn't cost any
+ * extra Supabase reads beyond the one write.
+ */
+export async function updateWatchlistItemStatus(
+  contentId: string,
+  status: ProfileWatchStatus,
+) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Please login first.");
+  }
+
+  const { error } = await supabase
+    .from("watchlist_items")
+    .update({
+      status,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", user.id)
+    .eq("content_id", contentId);
+
+  if (error) {
+    throw error;
+  }
 }

@@ -14,16 +14,19 @@ import {
   Profile as ProfileType,
   ProfileWatchStatus,
   WatchedItem,
+  WatchlistItem,
   computeAge,
   fetchGroupedProfileWatchlist,
   fetchProfile,
   fetchWatchedContent,
   formatAge,
   saveProfile,
+  updateWatchlistItemStatus,
   uploadAvatar,
 } from "../lib/profile";
 
 const STATUS_TABS: { id: ProfileWatchStatus; label: string }[] = [
+  { id: "watchlist", label: "Plan to Watch" },
   { id: "watching", label: "Watching" },
   { id: "on_hold", label: "Hold" },
   { id: "completed", label: "Completed" },
@@ -327,6 +330,17 @@ export default function Profile() {
   const [activeStatusTab, setActiveStatusTab] =
     useState<ProfileWatchStatus>("watching");
 
+  /*
+   * contentId of the card whose "move to..." menu is open, and
+   * the contentId currently being written to Supabase (so we
+   * can show "Updating..." and ignore repeat clicks on it).
+   */
+  const [openStatusMenuId, setOpenStatusMenuId] =
+    useState<string | null>(null);
+
+  const [updatingStatusId, setUpdatingStatusId] =
+    useState<string | null>(null);
+
   const [now, setNow] = useState(() => new Date());
 
   const [editing, setEditing] = useState(false);
@@ -390,6 +404,67 @@ export default function Profile() {
   }, [loadProfile, loadWatched, loadGroupedWatchlist]);
 
   /*
+   * Moves a card to a new status from the click-to-update menu.
+   * Updates `groupedWatchlist` locally first (moves the item
+   * between the two status buckets) so the tab counts and list
+   * update instantly without re-querying Supabase — only the
+   * single UPDATE in updateWatchlistItemStatus hits the
+   * network. On failure we re-fetch once to resync.
+   */
+  const handleUpdateStatus = useCallback(
+    async (
+      item: WatchlistItem,
+      newStatus: ProfileWatchStatus,
+    ) => {
+      if (
+        newStatus === item.status ||
+        updatingStatusId === item.contentId
+      ) {
+        return;
+      }
+
+      setOpenStatusMenuId(null);
+      setUpdatingStatusId(item.contentId);
+
+      setGroupedWatchlist((current) => {
+        if (!current) {
+          return current;
+        }
+
+        return {
+          ...current,
+          [item.status]: current[item.status].filter(
+            (row) => row.contentId !== item.contentId,
+          ),
+          [newStatus]: [
+            { ...item, status: newStatus },
+            ...current[newStatus],
+          ],
+        };
+      });
+
+      try {
+        await updateWatchlistItemStatus(
+          item.contentId,
+          newStatus,
+        );
+      } catch (err) {
+        // Roll back by re-fetching the real state.
+        await loadGroupedWatchlist();
+
+        alert(
+          err instanceof Error
+            ? err.message
+            : "Failed to update status.",
+        );
+      } finally {
+        setUpdatingStatusId(null);
+      }
+    },
+    [updatingStatusId, loadGroupedWatchlist],
+  );
+
+  /*
    * Live-ticking clock for the age display.
    */
   useEffect(() => {
@@ -399,6 +474,28 @@ export default function Profile() {
 
     return () => clearInterval(interval);
   }, []);
+
+  /*
+   * Close the "move to..." menu on any click outside it. Local
+   * UI state only — no Supabase call involved.
+   */
+  useEffect(() => {
+    if (!openStatusMenuId) {
+      return;
+    }
+
+    function handleClickOutside() {
+      setOpenStatusMenuId(null);
+    }
+
+    document.addEventListener("click", handleClickOutside);
+
+    return () =>
+      document.removeEventListener(
+        "click",
+        handleClickOutside,
+      );
+  }, [openStatusMenuId]);
 
   function openEditor() {
     setFormName(profile?.name || "");
@@ -683,14 +780,29 @@ export default function Profile() {
         {!watchlistLoading &&
           (groupedWatchlist?.[activeStatusTab].length ?? 0) >
             0 && (
-            <div className="divide-y divide-white/5 overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
+            <div className="divide-y divide-white/5 overflow-visible rounded-xl border border-white/10 bg-white/[0.03]">
               {groupedWatchlist![activeStatusTab].map(
                 (item) => (
                   <div
                     key={item.contentId}
-                    className="flex items-center justify-between gap-4 px-4 py-3"
+                    className="relative flex items-center justify-between gap-4 px-4 py-3"
                   >
-                    <div className="flex min-w-0 items-center gap-3">
+                    <button
+                      type="button"
+                      disabled={
+                        updatingStatusId === item.contentId
+                      }
+                      onClick={(event) => {
+                        event.stopPropagation();
+
+                        setOpenStatusMenuId(
+                          openStatusMenuId === item.contentId
+                            ? null
+                            : item.contentId,
+                        );
+                      }}
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:opacity-50"
+                    >
                       {item.imageUrl && (
                         <img
                           src={item.imageUrl}
@@ -705,10 +817,12 @@ export default function Profile() {
                         </p>
 
                         <p className="mt-0.5 text-xs text-white/40">
-                          {item.category}
+                          {updatingStatusId === item.contentId
+                            ? "Updating..."
+                            : item.category}
                         </p>
                       </div>
-                    </div>
+                    </button>
 
                     {item.currentEpisode != null &&
                     item.totalEpisodes ? (
@@ -717,6 +831,34 @@ export default function Profile() {
                         {item.totalEpisodes} ep
                       </span>
                     ) : null}
+
+                    {/* MOVE-TO-STATUS MENU */}
+                    {openStatusMenuId === item.contentId && (
+                      <div
+                        onClick={(event) =>
+                          event.stopPropagation()
+                        }
+                        className="absolute right-4 top-full z-20 mt-1 w-48 overflow-hidden rounded-xl border border-white/10 bg-[#151522]/95 p-1 shadow-2xl backdrop-blur-xl"
+                      >
+                        {STATUS_TABS.filter(
+                          (tab) => tab.id !== item.status,
+                        ).map((tab) => (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() =>
+                              handleUpdateStatus(
+                                item,
+                                tab.id,
+                              )
+                            }
+                            className="w-full rounded-lg px-3 py-2.5 text-left text-xs text-white/70 transition hover:bg-white/10 hover:text-white"
+                          >
+                            Move to {tab.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ),
               )}
