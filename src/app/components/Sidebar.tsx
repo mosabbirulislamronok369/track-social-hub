@@ -10,7 +10,8 @@ export type SidebarSection =
   | "profile"
   | "import"
   | "leaderboard"
-  | "recommended";
+  | "recommended"
+  | "islamic";
 
 type NavItem = {
   id: SidebarSection;
@@ -220,8 +221,26 @@ function IconGift() {
   );
 }
 
+function IconIslamic() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]">
+      <path
+        d="M15.5 4.5A8 8 0 1019.5 18a7 7 0 01-4-13.5z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M18.5 6.5l.7 1.6 1.6.7-1.6.7-.7 1.6-.7-1.6-1.6-.7 1.6-.7.7-1.6z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 const NAV_ITEMS: NavItem[] = [
   { id: "dashboard", label: "Dashboard", icon: <IconDashboard /> },
+  { id: "islamic", label: "Islamic Track", icon: <IconIslamic /> },
   { id: "browse", label: "Browse", icon: <IconBrowse /> },
 
   { id: "leaderboard", label: "Leaderboard", icon: <IconLeaderboard /> },

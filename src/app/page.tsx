@@ -15,6 +15,7 @@ import IMDBImport from "./components/IMDBImport";
 import PrivateWatchlist from "./components/PrivateWatchlist";
 import RatingBoard from "./components/RatingBoard";
 import Profile from "./components/Profile";
+import IslamicTrack from "./components/IslamicTrack";
 
 type ImportSource = "mal" | "tmdb" | "imdb";
 
@@ -112,6 +113,8 @@ export default function Home() {
             <Dashboard />
           </div>
         )}
+
+        {activeSection === "islamic" && <IslamicTrack />}
 
         {activeSection === "browse" && <UniversalBrowser />}
 
