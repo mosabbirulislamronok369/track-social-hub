@@ -278,6 +278,20 @@ export default function Dashboard() {
   const [rewatchSeconds, setRewatchSeconds] = useState(0);
 
   /*
+   * Grand total across EVERY watch_sessions row for this user,
+   * regardless of its `category` value. Kept separate from
+   * `stats` (which only buckets the 6 known categories) so a
+   * row with an unexpected/legacy category string still counts
+   * toward the headline "Total Watch Time" number — otherwise
+   * it silently disappears here while still being counted by
+   * the Leaderboard's get_leaderboard() RPC, which sums by
+   * whatever `category` value actually exists with no such
+   * filter. That mismatch is what caused Dashboard's total to
+   * read lower than the Leaderboard's total for the same user.
+   */
+  const [rawTotalSeconds, setRawTotalSeconds] = useState(0);
+
+  /*
    * Continue Watching — anything the user has added to their
    * watchlist / is watching / on hold / rewatching, newest
    * first. Populated from watchlist_items (see saveItemStatus
@@ -366,12 +380,16 @@ export default function Dashboard() {
        */
       const seenCounts: Record<string, number> = {};
       let rewatchTotal = 0;
+      let rawTotal = 0;
 
       for (const session of data ?? []) {
         const category = session.category as Category;
+        const seconds = Number(session.total_seconds ?? 0);
+
+        rawTotal += seconds;
 
         if (categories.includes(category)) {
-          nextStats[category] += Number(session.total_seconds ?? 0);
+          nextStats[category] += seconds;
         }
 
         const groupKey = `${session.category}-${session.content_id}`;
@@ -380,12 +398,13 @@ export default function Dashboard() {
         seenCounts[groupKey] = seenSoFar + 1;
 
         if (seenSoFar > 0) {
-          rewatchTotal += Number(session.total_seconds ?? 0);
+          rewatchTotal += seconds;
         }
       }
 
       setStats(nextStats);
       setRewatchSeconds(rewatchTotal);
+      setRawTotalSeconds(rawTotal);
     } catch (error) {
       console.error("Dashboard error:", error);
     } finally {
@@ -1057,12 +1076,15 @@ export default function Dashboard() {
      TOTAL TIME
   ============================================================ */
 
-  const totalSeconds = useMemo(() => {
-    return categories.reduce(
-      (total, category) => total + stats[category],
-      0
-    );
-  }, [stats]);
+  /*
+   * Headline total. Uses rawTotalSeconds (every row, any
+   * category value) rather than summing the 6 known `stats`
+   * buckets, so it always matches what the Leaderboard's
+   * get_leaderboard() RPC computes for "Total" — that RPC sums
+   * by whatever category string is actually stored, with no
+   * allow-list. See rawTotalSeconds above for why this matters.
+   */
+  const totalSeconds = rawTotalSeconds;
 
   const maxCategorySeconds = Math.max(
     ...categories.map((category) => stats[category]),
