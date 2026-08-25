@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { supabase } from "../lib/supabase";
 
 /*
  * IMDB IMPORT
@@ -18,15 +19,178 @@ import { useState } from "react";
  * routes. Anything that can't be confidently matched is shown
  * to the user instead of silently guessing.
  *
- * Matched items are saved as "watchlist" status using the
- * SAME localStorage key/shape UniversalBrowser.tsx already
- * uses, so they show up there immediately with no extra
- * wiring. This only sets status — it does not create
- * watch_sessions rows (that's reserved for "completed", which
- * needs an actual watch time).
+ * Matched items are saved using the SAME localStorage
+ * key/shape UniversalBrowser.tsx already uses, so they show
+ * up there immediately with no extra wiring. The user picks
+ * the status up front (Watchlist / Watching / Completed) —
+ * see ImportMode below. When logged in, matches are also
+ * synced to Supabase's watchlist_items table (so Dashboard /
+ * Continue Watching pick them up, not just the local status
+ * cache), and — only for "Completed" — to watch_sessions with
+ * an estimated runtime, matching how a manual status change
+ * in UniversalBrowser.tsx behaves.
  */
 
 const STORAGE_KEY = "universal_browser_status_v1";
+
+type ImportMode = "watchlist" | "watching" | "completed";
+
+/*
+ * Movie/TV search results don't include runtime — only the
+ * *-details routes do (same routes UniversalBrowser.tsx uses
+ * for the same reason). Only called when importing "As
+ * Completed", so ordinary Watchlist/Watching imports don't pay
+ * for the extra request.
+ */
+async function fetchMovieRuntimeSeconds(
+  tmdbId: number,
+): Promise<number> {
+  try {
+    const res = await fetch(
+      `/api/tmdb/movie-details?id=${encodeURIComponent(String(tmdbId))}`,
+      { cache: "no-store" },
+    );
+
+    if (!res.ok) {
+      return 0;
+    }
+
+    const data = await res.json();
+    const runtime = Number(data?.runtime);
+
+    return Number.isFinite(runtime) && runtime > 0
+      ? Math.round(runtime * 60)
+      : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function fetchTvRuntimeInfo(
+  tmdbId: number,
+): Promise<{ seconds: number; episodes: number | null }> {
+  try {
+    const res = await fetch(
+      `/api/tmdb/tv-details?id=${encodeURIComponent(String(tmdbId))}`,
+      { cache: "no-store" },
+    );
+
+    if (!res.ok) {
+      return { seconds: 0, episodes: null };
+    }
+
+    const data = await res.json();
+    const episodeRuntime = Number(data?.episodeRuntime);
+    const episodes = Number(data?.numberOfEpisodes) || null;
+
+    const seconds =
+      Number.isFinite(episodeRuntime) &&
+      episodeRuntime > 0 &&
+      episodes
+        ? Math.round(episodes * episodeRuntime * 60)
+        : 0;
+
+    return { seconds, episodes };
+  } catch {
+    return { seconds: 0, episodes: null };
+  }
+}
+
+async function persistWatchlistItem(params: {
+  userId: string;
+  contentId: string;
+  category: "Movies" | "TV";
+  title: string;
+  imageUrl: string | null;
+  status: ImportMode;
+  estimatedSeconds: number;
+  totalEpisodes: number | null;
+}) {
+  const { error } = await supabase.from("watchlist_items").upsert(
+    {
+      user_id: params.userId,
+      content_id: params.contentId,
+      category: params.category,
+      title: params.title,
+      image_url: params.imageUrl,
+      status: params.status,
+      estimated_seconds: params.estimatedSeconds,
+      total_episodes: params.totalEpisodes,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id,content_id" },
+  );
+
+  if (error) {
+    console.error("Failed to sync watchlist item:", error);
+  }
+}
+
+async function persistCompletedWatchSession(params: {
+  userId: string;
+  contentId: string;
+  category: "Movies" | "TV";
+  estimatedSeconds: number;
+}) {
+  if (params.estimatedSeconds <= 0) {
+    return;
+  }
+
+  const { data: existingSessions, error: findError } = await supabase
+    .from("watch_sessions")
+    .select("id,total_seconds")
+    .eq("user_id", params.userId)
+    .eq("content_id", params.contentId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (findError) {
+    console.error("Failed to check existing watch session:", findError);
+    return;
+  }
+
+  const existing = existingSessions?.[0];
+
+  if (existing) {
+    const finalSeconds = Math.max(
+      Number(existing.total_seconds || 0),
+      params.estimatedSeconds,
+    );
+
+    const { error } = await supabase
+      .from("watch_sessions")
+      .update({
+        total_seconds: finalSeconds,
+        is_active: false,
+        category: params.category,
+        last_heartbeat: new Date().toISOString(),
+      })
+      .eq("id", existing.id)
+      .eq("user_id", params.userId);
+
+    if (error) {
+      console.error("Failed to update watch session:", error);
+    }
+
+    return;
+  }
+
+  const now = new Date().toISOString();
+
+  const { error } = await supabase.from("watch_sessions").insert({
+    user_id: params.userId,
+    content_id: params.contentId,
+    started_at: now,
+    last_heartbeat: now,
+    is_active: false,
+    total_seconds: params.estimatedSeconds,
+    category: params.category,
+  });
+
+  if (error) {
+    console.error("Failed to insert watch session:", error);
+  }
+}
 
 type ImdbRow = {
   title: string;
@@ -168,7 +332,11 @@ function guessType(row: ImdbRow): "Movies" | "TV" {
 async function searchTmdb(
   row: ImdbRow,
   type: "Movies" | "TV",
-): Promise<{ id: number; title: string } | null> {
+): Promise<{
+  id: number;
+  title: string;
+  posterPath: string | null;
+} | null> {
   const endpoint = type === "Movies" ? "movies" : "tv";
 
   const res = await fetch(
@@ -206,12 +374,13 @@ async function searchTmdb(
 
   const tmdbId = best.tmdb_id ?? best.id;
   const title = best.title || best.name || row.title;
+  const posterPath = best.poster_path ?? null;
 
   if (!tmdbId) {
     return null;
   }
 
-  return { id: tmdbId, title };
+  return { id: tmdbId, title, posterPath };
 }
 
 export default function IMDBImport() {
@@ -222,6 +391,10 @@ export default function IMDBImport() {
   const [unmatched, setUnmatched] = useState<ImdbRow[]>([]);
   const [error, setError] = useState("");
   const [finished, setFinished] = useState(false);
+
+  /* Watchlist / Watching / Completed — picked before uploading. */
+  const [importMode, setImportMode] = useState<ImportMode>("watchlist");
+  const [syncedToAccount, setSyncedToAccount] = useState(false);
 
   async function handleFile(file: File) {
     setError("");
@@ -248,6 +421,19 @@ export default function IMDBImport() {
 
     const statuses = getStoredStatuses();
 
+    /*
+     * Logged in -> also sync each match to Supabase so
+     * Dashboard / Continue Watching / watch time stats see
+     * these too, not just the local status cache. Not logged
+     * in -> import still works, just stays local-only (same
+     * as before).
+     */
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    setSyncedToAccount(Boolean(user));
+
     for (let i = 0; i < rows.length; i += 1) {
       const row = rows[i];
       const type = guessType(row);
@@ -264,8 +450,59 @@ export default function IMDBImport() {
             type,
           });
 
-          statuses[`${type.toLowerCase()}-${found.id}`] =
-            "watchlist";
+          const contentId = `${type.toLowerCase()}-${found.id}`;
+
+          statuses[contentId] = importMode;
+
+          if (user) {
+            try {
+              let estimatedSeconds = 0;
+              let totalEpisodes: number | null = null;
+
+              if (importMode === "completed") {
+                if (type === "Movies") {
+                  estimatedSeconds =
+                    await fetchMovieRuntimeSeconds(found.id);
+                } else {
+                  const info = await fetchTvRuntimeInfo(found.id);
+                  estimatedSeconds = info.seconds;
+                  totalEpisodes = info.episodes;
+                }
+              }
+
+              const imageUrl = found.posterPath
+                ? `https://image.tmdb.org/t/p/w500${found.posterPath}`
+                : null;
+
+              // eslint-disable-next-line no-await-in-loop
+              await persistWatchlistItem({
+                userId: user.id,
+                contentId,
+                category: type,
+                title: found.title,
+                imageUrl,
+                status: importMode,
+                estimatedSeconds,
+                totalEpisodes,
+              });
+
+              if (importMode === "completed") {
+                // eslint-disable-next-line no-await-in-loop
+                await persistCompletedWatchSession({
+                  userId: user.id,
+                  contentId,
+                  category: type,
+                  estimatedSeconds,
+                });
+              }
+            } catch (syncError) {
+              console.error(
+                "Failed to sync to Supabase:",
+                row.title,
+                syncError,
+              );
+            }
+          }
         } else {
           unmatchedRows.push(row);
         }
@@ -295,10 +532,48 @@ export default function IMDBImport() {
         Go to your IMDb Watchlist page, click the ⋯ menu, choose{" "}
         <span className="text-white/80">Export</span>, then upload
         the CSV file it downloads here. Each title gets matched to
-        this app's Movies/TV database and added to your watchlist.
+        this app's Movies/TV database and added with the status you
+        pick below.
       </p>
 
-      <label className="mt-6 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 bg-white/[0.03] px-6 py-10 text-center transition hover:border-purple-400/40 hover:bg-white/[0.05]">
+      {/* Import Mode */}
+      <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+        <p className="mb-3 text-sm font-medium text-white/70">
+          Add matched titles as
+        </p>
+
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          {(
+            [
+              { value: "watchlist" as const, label: "Watchlist" },
+              { value: "watching" as const, label: "As Watching" },
+              { value: "completed" as const, label: "As Completed" },
+            ]
+          ).map((option) => {
+            const active = importMode === option.value;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setImportMode(option.value)}
+                disabled={importing}
+                className={[
+                  "rounded-xl border px-3 py-3 text-sm font-semibold transition",
+                  active
+                    ? "border-purple-400/60 bg-purple-500/20 text-white"
+                    : "border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08]",
+                  "disabled:cursor-not-allowed disabled:opacity-50",
+                ].join(" ")}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <label className="mt-4 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 bg-white/[0.03] px-6 py-10 text-center transition hover:border-purple-400/40 hover:bg-white/[0.05]">
         <input
           type="file"
           accept=".csv"
@@ -357,9 +632,20 @@ export default function IMDBImport() {
           <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-5">
             <p className="font-semibold text-emerald-300">
               ✓ {matched.length} title
-              {matched.length === 1 ? "" : "s"} added to your
-              watchlist
+              {matched.length === 1 ? "" : "s"} added as{" "}
+              {importMode === "watchlist"
+                ? "Watchlist"
+                : importMode === "watching"
+                ? "Watching"
+                : "Completed"}
             </p>
+
+            {!syncedToAccount && (
+              <p className="mt-1 text-xs text-emerald-300/60">
+                Log in to also sync these to your account's watch
+                time & Dashboard stats.
+              </p>
+            )}
           </div>
 
           {unmatched.length > 0 && (
