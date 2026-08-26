@@ -400,11 +400,25 @@ export default function Dashboard() {
         return;
       }
 
-      const { data, error } = await supabase
-        .from("watch_sessions")
-        .select("category,total_seconds,content_id,created_at")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: true });
+      /*
+       * Uses a server-side RPC (get_dashboard_stats) instead of
+       * pulling every watch_sessions row and summing in JS.
+       *
+       * Why: PostgREST caps an unbounded select at 1000 rows by
+       * default. WatchEngine inserts a new watch_sessions row
+       * per session, so active users can easily pass 1000 rows —
+       * once that happened, ordering by created_at ascending
+       * silently returned only the OLDEST 1000 rows and dropped
+       * the newest ones, so Total Watch Time stopped reflecting
+       * recent activity (while the Leaderboard, backed by its
+       * own SQL aggregate, kept updating correctly). The RPC
+       * does the same rewatch/category/raw-total math inside
+       * Postgres, so the row cap never applies and only a
+       * handful of summary rows come back over the wire.
+       */
+      const { data, error } = await supabase.rpc(
+        "get_dashboard_stats",
+      );
 
       if (error) {
         console.error("Failed to load watch stats:", error);
@@ -413,34 +427,21 @@ export default function Dashboard() {
       }
 
       const nextStats: Stats = { ...emptyStats };
-
-      /*
-       * Track how many times we've seen each (category, content_id)
-       * pair. The first occurrence is the original watch/completion;
-       * every occurrence after that is a rewatch.
-       */
-      const seenCounts: Record<string, number> = {};
       let rewatchTotal = 0;
       let rawTotal = 0;
 
-      for (const session of data ?? []) {
-        const category = session.category as Category;
-        const seconds = Number(session.total_seconds ?? 0);
-
-        rawTotal += seconds;
+      for (const row of data ?? []) {
+        const category = row.category as Category;
+        const seconds = Number(row.total_seconds ?? 0);
 
         if (categories.includes(category)) {
-          nextStats[category] += seconds;
+          nextStats[category] = seconds;
         }
 
-        const groupKey = `${session.category}-${session.content_id}`;
-        const seenSoFar = seenCounts[groupKey] ?? 0;
-
-        seenCounts[groupKey] = seenSoFar + 1;
-
-        if (seenSoFar > 0) {
-          rewatchTotal += seconds;
-        }
+        // Same value on every row (cross-joined in the RPC) —
+        // just needs reading once.
+        rewatchTotal = Number(row.rewatch_seconds ?? 0);
+        rawTotal = Number(row.raw_total_seconds ?? 0);
       }
 
       setStats(nextStats);
