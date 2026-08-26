@@ -12,6 +12,8 @@ import {
   fetchWatchedEpisodes,
   groupEpisodesByArc,
   setEpisodeWatched,
+  syncTotalWatchTimeFromEpisodes,
+  syncWatchlistProgress,
 } from "../lib/episodeProgress";
 
 type SeasonMeta = {
@@ -198,7 +200,10 @@ export default function EpisodeTracker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category, seasonsLoading, selectedSeason]);
 
-  async function toggleEpisode(episode: EpisodeInfo) {
+  async function toggleEpisode(
+    episode: EpisodeInfo,
+    options?: { sync?: boolean },
+  ) {
     if (savingEpisode === episode.episodeNumber) {
       return;
     }
@@ -227,6 +232,7 @@ export default function EpisodeTracker({
         selectedSeason,
         episode,
         !isWatched,
+        options,
       );
     } catch (err) {
       console.error("Failed to save episode progress:", err);
@@ -254,17 +260,42 @@ export default function EpisodeTracker({
     }
   }
 
-  async function handleMarkAll(watched: boolean) {
-    for (const episode of episodes) {
-      const already = watchedSet.has(episode.episodeNumber);
-
-      if (already === watched) {
-        continue;
-      }
-
-      // eslint-disable-next-line no-await-in-loop
-      await toggleEpisode(episode);
+  /*
+   * Runs the two "derived state" recomputes once — total watch
+   * time and watchlist_items.current_episode — instead of once
+   * per episode. Bulk flows (Mark all watched / Mark Episode
+   * Range) pass { sync: false } into every toggleEpisode() call
+   * and then call this a single time at the end, so a 12-episode
+   * batch does 12 episode_progress writes but only ONE pair of
+   * recomputes instead of 12 racing pairs of them (which is what
+   * caused the Continue Watching card to briefly show a stale/
+   * wrong episode count).
+   */
+  async function finalizeBatchSync() {
+    try {
+      await syncTotalWatchTimeFromEpisodes(contentId, category);
+      await syncWatchlistProgress(contentId);
+    } catch (err) {
+      console.error("Failed to sync after bulk update:", err);
     }
+  }
+
+  async function handleMarkAll(watched: boolean) {
+    const targets = episodes.filter(
+      (episode) =>
+        watchedSet.has(episode.episodeNumber) !== watched,
+    );
+
+    if (targets.length === 0) {
+      return;
+    }
+
+    for (const episode of targets) {
+      // eslint-disable-next-line no-await-in-loop
+      await toggleEpisode(episode, { sync: false });
+    }
+
+    await finalizeBatchSync();
   }
 
   /*
@@ -297,7 +328,11 @@ export default function EpisodeTracker({
 
       for (const episode of targets) {
         // eslint-disable-next-line no-await-in-loop
-        await toggleEpisode(episode);
+        await toggleEpisode(episode, { sync: false });
+      }
+
+      if (targets.length > 0) {
+        await finalizeBatchSync();
       }
 
       setMarkRangeFrom("");

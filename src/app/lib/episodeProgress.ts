@@ -154,7 +154,20 @@ export async function setEpisodeWatched(
   seasonNumber: number,
   episode: EpisodeInfo,
   watched: boolean,
+  /*
+   * When bulk-marking many episodes in a row (Mark all watched /
+   * Mark Episode Range), each individual call used to trigger its
+   * own syncTotalWatchTimeFromEpisodes + syncWatchlistProgress —
+   * N episodes meant N redundant recomputes racing each other,
+   * which is what caused the Continue Watching card to briefly
+   * flash a wrong episode count. Pass { sync: false } to skip
+   * both recomputes for this call; the caller is responsible for
+   * invoking them once after the whole batch finishes.
+   */
+  options?: { sync?: boolean },
 ) {
+  const shouldSync = options?.sync ?? true;
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -198,6 +211,10 @@ export async function setEpisodeWatched(
     if (error) {
       throw error;
     }
+  }
+
+  if (!shouldSync) {
+    return;
   }
 
   await syncTotalWatchTimeFromEpisodes(
