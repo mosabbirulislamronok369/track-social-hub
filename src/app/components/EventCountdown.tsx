@@ -170,6 +170,134 @@ function makeId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/* ============================================================
+   TICK-TOCK SOUND ENGINE
+
+   Generated with the Web Audio API (no audio files to load/
+   host). A single shared AudioContext is created lazily on
+   first user interaction (browsers block audio until then).
+============================================================ */
+
+let sharedAudioCtx: AudioContext | null = null;
+
+function getAudioContext(): AudioContext | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const AudioCtor =
+    window.AudioContext ||
+    (window as any).webkitAudioContext;
+
+  if (!AudioCtor) {
+    return null;
+  }
+
+  if (!sharedAudioCtx) {
+    sharedAudioCtx = new AudioCtor();
+  }
+
+  if (sharedAudioCtx.state === "suspended") {
+    sharedAudioCtx.resume();
+  }
+
+  return sharedAudioCtx;
+}
+
+// Alternates a slightly higher "tick" and lower "tock" pitch,
+// like a clock — pass true for the "tick" beat.
+function playTick(isTickBeat: boolean) {
+  const ctx = getAudioContext();
+
+  if (!ctx) {
+    return;
+  }
+
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.type = "square";
+  osc.frequency.value = isTickBeat ? 1000 : 700;
+
+  const now = ctx.currentTime;
+
+  gain.gain.setValueAtTime(0.001, now);
+  gain.gain.exponentialRampToValueAtTime(0.12, now + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+
+  osc.start(now);
+  osc.stop(now + 0.07);
+}
+
+// Little ascending chime played once when a countdown hits zero.
+function playDoneChime() {
+  const ctx = getAudioContext();
+
+  if (!ctx) {
+    return;
+  }
+
+  const notes = [523.25, 659.25, 783.99, 1046.5]; // C5 E5 G5 C6
+  const start = ctx.currentTime;
+
+  notes.forEach((freq, index) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sine";
+    osc.frequency.value = freq;
+
+    const t = start + index * 0.12;
+
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.15, t + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + 0.32);
+  });
+}
+
+function IconSoundOn() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">
+      <path
+        d="M4 9.5v5h3.2L12 18V6L7.2 9.5H4z"
+        fill="currentColor"
+      />
+      <path
+        d="M16 9c1 .9 1.6 2 1.6 3.3S17 14.7 16 15.6M18.4 6.6c1.7 1.5 2.7 3.5 2.7 5.7s-1 4.2-2.7 5.7"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function IconSoundOff() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">
+      <path
+        d="M4 9.5v5h3.2L12 18V6L7.2 9.5H4z"
+        fill="currentColor"
+      />
+      <path
+        d="M16 9.5l4.5 4.5M20.5 9.5L16 14"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 /*
  * One event card — owns its own 1-second ticker so unrelated
  * events don't all re-render every second's worth of state
@@ -183,6 +311,11 @@ function EventCard({
   onDelete: (id: string) => void;
 }) {
   const [now, setNow] = useState(() => new Date());
+  const [soundOn, setSoundOn] = useState(false);
+  const tickBeatRef = useRef(true);
+  const wasPastRef = useRef(false);
+
+  const target = new Date(event.targetDate);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -192,11 +325,38 @@ function EventCard({
     return () => clearInterval(interval);
   }, []);
 
-  const target = new Date(event.targetDate);
   const breakdown = computeCountdown(target, now);
+
+  // Tick every second while running, alternating tick/tock —
+  // and fire the completion chime exactly once when it hits zero.
+  useEffect(() => {
+    if (!soundOn) {
+      return;
+    }
+
+    if (breakdown.isPast) {
+      if (!wasPastRef.current) {
+        playDoneChime();
+      }
+    } else {
+      tickBeatRef.current = !tickBeatRef.current;
+      playTick(tickBeatRef.current);
+    }
+
+    wasPastRef.current = breakdown.isPast;
+  }, [now, soundOn, breakdown.isPast]);
 
   return (
     <div className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] transition hover:border-white/20">
+      <button
+        type="button"
+        onClick={() => setSoundOn((current) => !current)}
+        title={soundOn ? "Mute tick sound" : "Enable tick sound"}
+        className="absolute right-12 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white/70 backdrop-blur-md transition hover:bg-black/80 hover:text-white"
+      >
+        {soundOn ? <IconSoundOn /> : <IconSoundOff />}
+      </button>
+
       <button
         type="button"
         onClick={() => onDelete(event.id)}
