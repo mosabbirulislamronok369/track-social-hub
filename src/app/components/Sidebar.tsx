@@ -11,7 +11,8 @@ export type SidebarSection =
   | "import"
   | "leaderboard"
   | "recommended"
-  | "islamic";
+  | "islamic"
+  | "countdown";
 
 type NavItem = {
   id: SidebarSection;
@@ -238,8 +239,42 @@ function IconIslamic() {
   );
 }
 
+function IconCountdown() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]">
+      <circle
+        cx="12"
+        cy="13"
+        r="7.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <path
+        d="M12 9v4l2.6 2.6"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9.5 2.5h5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <path
+        d="M12 2.5V4.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 const NAV_ITEMS: NavItem[] = [
   { id: "dashboard", label: "Dashboard", icon: <IconDashboard /> },
+  { id: "countdown", label: "Countdown", icon: <IconCountdown /> },
   { id: "islamic", label: "Islamic Track", icon: <IconIslamic /> },
   { id: "browse", label: "Browse", icon: <IconBrowse /> },
 
