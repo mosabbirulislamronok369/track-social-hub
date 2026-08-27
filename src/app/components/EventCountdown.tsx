@@ -151,6 +151,130 @@ function formatCountdown(b: CountdownBreakdown) {
   return `${b.years}y ${b.months}m ${b.days}d ${b.hours}h ${b.minutes}m ${b.seconds}s`;
 }
 
+/* ============================================================
+   CINEMATIC UNIT DISPLAY
+
+   Instead of always printing all six units (which reads badly
+   — "months" and "minutes" both shorten to "m"), we drop any
+   leading units that are still zero. A countdown that's 20
+   days out shows Days/Hours/Min/Sec; one that's 40 seconds out
+   shows just Seconds, big.
+============================================================ */
+
+type CountUnit = { key: keyof CountdownBreakdown; label: string };
+
+const COUNT_UNITS: CountUnit[] = [
+  { key: "years", label: "Years" },
+  { key: "months", label: "Months" },
+  { key: "days", label: "Days" },
+  { key: "hours", label: "Hours" },
+  { key: "minutes", label: "Minutes" },
+  { key: "seconds", label: "Seconds" },
+];
+
+function getVisibleUnits(
+  b: CountdownBreakdown,
+): { label: string; value: number }[] {
+  const firstNonZero = COUNT_UNITS.findIndex(
+    (u) => (b[u.key] as number) > 0,
+  );
+
+  // -1 means everything (incl. seconds) is 0 — still show Seconds.
+  const startIndex =
+    firstNonZero === -1 ? COUNT_UNITS.length - 1 : firstNonZero;
+
+  return COUNT_UNITS.slice(startIndex).map((u) => ({
+    label: u.label,
+    value: b[u.key] as number,
+  }));
+}
+
+/*
+ * Renders the labeled, colon-separated digit row shared by the
+ * card and the fullscreen view. `size` controls scale.
+ */
+function CinematicDigits({
+  units,
+  size = "card",
+}: {
+  units: { label: string; value: number }[];
+  size?: "card" | "full";
+}) {
+  const soloMode = units.length === 1;
+
+  if (soloMode) {
+    const unit = units[0];
+
+    return (
+      <div className="text-center">
+        <p
+          className={
+            size === "full"
+              ? "text-sm font-semibold uppercase tracking-[0.3em] text-white/40"
+              : "text-[10px] font-semibold uppercase tracking-[0.25em] text-white/30"
+          }
+        >
+          {unit.label}
+        </p>
+        <p
+          className={
+            size === "full"
+              ? "mt-2 text-[9rem] font-black leading-none tabular-nums text-white sm:text-[13rem]"
+              : "mt-1 text-5xl font-black leading-none tabular-nums text-purple-300"
+          }
+        >
+          {unit.value}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`flex items-end justify-center ${
+        size === "full" ? "gap-2 sm:gap-4" : "gap-1"
+      }`}
+    >
+      {units.map((unit, index) => (
+        <div key={unit.label} className="flex items-end">
+          <div className="flex flex-col items-center">
+            <span
+              className={
+                size === "full"
+                  ? "text-[11px] font-semibold uppercase tracking-widest text-white/40 sm:text-sm"
+                  : "text-[8px] font-semibold uppercase tracking-widest text-white/30"
+              }
+            >
+              {unit.label}
+            </span>
+            <span
+              className={
+                size === "full"
+                  ? "mt-1 text-4xl font-black tabular-nums text-white sm:text-6xl"
+                  : "mt-0.5 text-lg font-bold tabular-nums text-purple-300"
+              }
+            >
+              {String(unit.value).padStart(2, "0")}
+            </span>
+          </div>
+
+          {index < units.length - 1 && (
+            <span
+              className={
+                size === "full"
+                  ? "mx-1 pb-1 text-4xl font-black text-white/20 sm:text-6xl"
+                  : "mx-0.5 pb-0.5 text-lg font-bold text-white/20"
+              }
+            >
+              :
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /*
  * Converts a File to a base64 data URL for local-only storage
  * (no upload endpoint, no Supabase Storage bucket used).
@@ -298,6 +422,121 @@ function IconSoundOff() {
   );
 }
 
+/* ============================================================
+   FULLSCREEN CINEMATIC COUNTDOWN
+
+   Opens when an event card is tapped — black letterbox bars
+   top & bottom (movie-theater feel), the event's thumbnail as
+   a blurred backdrop, and a big centered countdown.
+============================================================ */
+
+function FullscreenCountdown({
+  event,
+  target,
+  breakdown,
+  visibleUnits,
+  soundOn,
+  onToggleSound,
+  onClose,
+}: {
+  event: CountdownEvent;
+  target: Date;
+  breakdown: CountdownBreakdown;
+  visibleUnits: { label: string; value: number }[];
+  soundOn: boolean;
+  onToggleSound: () => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKey);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[200] flex flex-col bg-black">
+      {/* TOP LETTERBOX BAR */}
+      <div className="h-10 shrink-0 bg-black sm:h-16" />
+
+      <div className="relative flex flex-1 items-center justify-center overflow-hidden">
+        {event.thumbnailUrl && (
+          <img
+            src={event.thumbnailUrl}
+            alt=""
+            className="absolute inset-0 h-full w-full scale-110 object-cover opacity-25 blur-3xl"
+          />
+        )}
+
+        <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/70 to-black/90" />
+
+        {/* CONTROLS */}
+        <div className="absolute right-4 top-4 z-20 flex gap-2 sm:right-8 sm:top-8">
+          <button
+            type="button"
+            onClick={onToggleSound}
+            title={soundOn ? "Mute tick sound" : "Enable tick sound"}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/70 backdrop-blur-md transition hover:bg-white/10 hover:text-white"
+          >
+            {soundOn ? <IconSoundOn /> : <IconSoundOff />}
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            title="Close"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/70 backdrop-blur-md transition hover:bg-white/10 hover:text-white"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* CONTENT */}
+        <div className="relative z-10 flex flex-col items-center px-6 text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-white/40">
+            Counting down to
+          </p>
+
+          <h2 className="mt-3 max-w-3xl text-3xl font-black tracking-tight text-white sm:text-5xl">
+            {event.title}
+          </h2>
+
+          <p className="mt-3 text-sm text-white/50 sm:text-base">
+            {target.toLocaleString(undefined, {
+              dateStyle: "full",
+              timeStyle: "short",
+            })}
+          </p>
+
+          <div className="mt-10 sm:mt-14">
+            {breakdown.isPast ? (
+              <p className="text-4xl font-black text-green-400 sm:text-6xl">
+                🎉 It&apos;s here!
+              </p>
+            ) : (
+              <CinematicDigits units={visibleUnits} size="full" />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* BOTTOM LETTERBOX BAR */}
+      <div className="h-10 shrink-0 bg-black sm:h-16" />
+    </div>
+  );
+}
+
 /*
  * One event card — owns its own 1-second ticker so unrelated
  * events don't all re-render every second's worth of state
@@ -312,6 +551,7 @@ function EventCard({
 }) {
   const [now, setNow] = useState(() => new Date());
   const [soundOn, setSoundOn] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const tickBeatRef = useRef(true);
   const wasPastRef = useRef(false);
 
@@ -326,6 +566,7 @@ function EventCard({
   }, []);
 
   const breakdown = computeCountdown(target, now);
+  const visibleUnits = getVisibleUnits(breakdown);
 
   // Tick every second while running, alternating tick/tock —
   // and fire the completion chime exactly once when it hits zero.
@@ -347,64 +588,89 @@ function EventCard({
   }, [now, soundOn, breakdown.isPast]);
 
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] transition hover:border-white/20">
-      <button
-        type="button"
-        onClick={() => setSoundOn((current) => !current)}
-        title={soundOn ? "Mute tick sound" : "Enable tick sound"}
-        className="absolute right-12 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white/70 backdrop-blur-md transition hover:bg-black/80 hover:text-white"
+    <>
+      <div
+        onClick={() => setIsFullscreen(true)}
+        role="button"
+        tabIndex={0}
+        className="group relative cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] transition hover:border-white/20"
       >
-        {soundOn ? <IconSoundOn /> : <IconSoundOff />}
-      </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSoundOn((current) => !current);
+          }}
+          title={soundOn ? "Mute tick sound" : "Enable tick sound"}
+          className="absolute right-12 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white/70 backdrop-blur-md transition hover:bg-black/80 hover:text-white"
+        >
+          {soundOn ? <IconSoundOn /> : <IconSoundOff />}
+        </button>
 
-      <button
-        type="button"
-        onClick={() => onDelete(event.id)}
-        className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-sm text-white/70 backdrop-blur-md transition hover:bg-black/80 hover:text-white"
-        title="Remove event"
-      >
-        ✕
-      </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(event.id);
+          }}
+          className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-sm text-white/70 backdrop-blur-md transition hover:bg-black/80 hover:text-white"
+          title="Remove event"
+        >
+          ✕
+        </button>
 
-      <div className="relative h-36 w-full overflow-hidden">
-        {event.thumbnailUrl ? (
-          <img
-            src={event.thumbnailUrl}
-            alt={event.title}
-            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-purple-500/20 to-pink-500/20 text-3xl font-bold text-white/20">
-            {event.title.slice(0, 1).toUpperCase() || "?"}
+        <div className="relative h-36 w-full overflow-hidden">
+          {event.thumbnailUrl ? (
+            <img
+              src={event.thumbnailUrl}
+              alt={event.title}
+              className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-purple-500/20 to-pink-500/20 text-3xl font-bold text-white/20">
+              {event.title.slice(0, 1).toUpperCase() || "?"}
+            </div>
+          )}
+
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
+
+          <div className="absolute bottom-3 left-4 right-4">
+            <h4 className="truncate font-semibold text-white">
+              {event.title}
+            </h4>
+
+            <p className="mt-0.5 text-xs text-white/50">
+              {target.toLocaleString(undefined, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+            </p>
           </div>
-        )}
+        </div>
 
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
-
-        <div className="absolute bottom-3 left-4 right-4">
-          <h4 className="truncate font-semibold text-white">
-            {event.title}
-          </h4>
-
-          <p className="mt-0.5 text-xs text-white/50">
-            {target.toLocaleString(undefined, {
-              dateStyle: "medium",
-              timeStyle: "short",
-            })}
-          </p>
+        <div className="p-4">
+          {breakdown.isPast ? (
+            <p className="text-center text-lg font-bold text-green-400">
+              Happened!
+            </p>
+          ) : (
+            <CinematicDigits units={visibleUnits} size="card" />
+          )}
         </div>
       </div>
 
-      <div className="p-4">
-        <p
-          className={`text-center text-lg font-bold tabular-nums ${
-            breakdown.isPast ? "text-green-400" : "text-purple-300"
-          }`}
-        >
-          {formatCountdown(breakdown)}
-        </p>
-      </div>
-    </div>
+      {isFullscreen && (
+        <FullscreenCountdown
+          event={event}
+          target={target}
+          breakdown={breakdown}
+          visibleUnits={visibleUnits}
+          soundOn={soundOn}
+          onToggleSound={() => setSoundOn((current) => !current)}
+          onClose={() => setIsFullscreen(false)}
+        />
+      )}
+    </>
   );
 }
 
