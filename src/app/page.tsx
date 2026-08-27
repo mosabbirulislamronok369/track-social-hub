@@ -16,6 +16,7 @@ import PrivateWatchlist from "./components/PrivateWatchlist";
 import RatingBoard from "./components/RatingBoard";
 import Profile from "./components/Profile";
 import IslamicTrack from "./components/IslamicTrack";
+import EventCountdown from "./components/EventCountdown";
 
 type ImportSource = "mal" | "tmdb" | "imdb";
 
@@ -115,6 +116,12 @@ export default function Home() {
         )}
 
         {activeSection === "islamic" && <IslamicTrack />}
+
+        {activeSection === "countdown" && (
+          <div className="mx-auto w-full max-w-6xl px-4 pb-10">
+            <EventCountdown />
+          </div>
+        )}
 
         {activeSection === "browse" && <UniversalBrowser />}
 
