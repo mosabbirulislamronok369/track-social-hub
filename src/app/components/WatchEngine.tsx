@@ -233,7 +233,7 @@ export default function WatchEngine({
     };
   }, [isWatching]);
 
-  // Supabase heartbeat every 10 seconds
+  // Supabase heartbeat every 5 minutes
   useEffect(() => {
     if (!isWatching || !sessionIdRef.current) {
       if (heartbeatRef.current) {
@@ -246,7 +246,7 @@ export default function WatchEngine({
 
     heartbeatRef.current = setInterval(() => {
       saveHeartbeat();
-    }, 10000);
+    }, 5 * 60 * 1000);
 
     return () => {
       if (heartbeatRef.current) {

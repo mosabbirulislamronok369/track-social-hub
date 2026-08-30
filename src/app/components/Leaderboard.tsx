@@ -48,25 +48,55 @@ const CATEGORY_LABELS: Record<DisplayCategory, string> = {
   Quran: "🕌 Quran",
 };
 
+/*
+ * Cascading Years/Months/Days/Hours/Minutes/Seconds formatter —
+ * kept in sync with Dashboard.tsx's formatTime. Leading zero
+ * units are skipped (e.g. no years shows starting from months),
+ * but once a non-zero unit is found every smaller unit is shown
+ * even if it's 0. Years/months use a 365/30-day approximation.
+ */
+const YEAR_SECONDS = 365 * 86400;
+const MONTH_SECONDS = 30 * 86400;
+
 function formatTime(totalSeconds: number) {
-  const seconds = Math.max(0, Math.floor(totalSeconds));
+  let seconds = Math.max(0, Math.floor(totalSeconds));
+
+  const years = Math.floor(seconds / YEAR_SECONDS);
+  seconds %= YEAR_SECONDS;
+
+  const months = Math.floor(seconds / MONTH_SECONDS);
+  seconds %= MONTH_SECONDS;
+
   const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
+  seconds %= 86400;
 
-  if (days > 0) {
-    return `${days}d ${hours}h ${minutes}m`;
+  const hours = Math.floor(seconds / 3600);
+  seconds %= 3600;
+
+  const minutes = Math.floor(seconds / 60);
+  seconds %= 60;
+
+  const secs = seconds;
+
+  const units = [
+    { value: years, label: "y" },
+    { value: months, label: "mo" },
+    { value: days, label: "d" },
+    { value: hours, label: "h" },
+    { value: minutes, label: "m" },
+    { value: secs, label: "s" },
+  ];
+
+  let startIndex = units.findIndex((unit) => unit.value > 0);
+
+  if (startIndex === -1) {
+    startIndex = units.length - 1;
   }
 
-  if (hours > 0) {
-    return `${hours}h ${minutes}m`;
-  }
-
-  if (minutes > 0) {
-    return `${minutes}m`;
-  }
-
-  return `${seconds}s`;
+  return units
+    .slice(startIndex)
+    .map((unit) => `${unit.value}${unit.label}`)
+    .join(" ");
 }
 
 const MEDALS = ["🥇", "🥈", "🥉"];
@@ -153,6 +183,12 @@ export default function Leaderboard() {
 
   useEffect(() => {
     loadLeaderboard();
+
+    // Keep rankings reasonably fresh without hammering Supabase —
+    // re-fetch every 5 minutes instead of on every render/poll.
+    const interval = setInterval(loadLeaderboard, 5 * 60 * 1000);
+
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope, category]);
 

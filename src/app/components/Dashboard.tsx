@@ -148,17 +148,57 @@ const emptyStats: Stats = {
   Private: 0,
 };
 
+/*
+ * Cascading Years/Months/Days/Hours/Minutes/Seconds formatter.
+ * Leading zero units are skipped entirely (e.g. 0 years and 0
+ * months just shows "5d 3h 12m 8s" starting from days), but
+ * once a non-zero unit is found, every smaller unit is shown
+ * even if it's 0 (so "13h 44m 0s", not "13h 44m"). Years/months
+ * use a 365/30-day approximation — fine for a display duration,
+ * not meant to be calendar-accurate.
+ */
+const YEAR_SECONDS = 365 * 86400;
+const MONTH_SECONDS = 30 * 86400;
+
 function formatTime(totalSeconds: number) {
-  const seconds = Math.max(
-    0,
-    Math.floor(Number(totalSeconds) || 0)
-  );
+  let seconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+
+  const years = Math.floor(seconds / YEAR_SECONDS);
+  seconds %= YEAR_SECONDS;
+
+  const months = Math.floor(seconds / MONTH_SECONDS);
+  seconds %= MONTH_SECONDS;
 
   const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
+  seconds %= 86400;
 
-  return `${days}d ${hours}h ${minutes}m`;
+  const hours = Math.floor(seconds / 3600);
+  seconds %= 3600;
+
+  const minutes = Math.floor(seconds / 60);
+  seconds %= 60;
+
+  const secs = seconds;
+
+  const units = [
+    { value: years, label: "y" },
+    { value: months, label: "mo" },
+    { value: days, label: "d" },
+    { value: hours, label: "h" },
+    { value: minutes, label: "m" },
+    { value: secs, label: "s" },
+  ];
+
+  let startIndex = units.findIndex((unit) => unit.value > 0);
+
+  if (startIndex === -1) {
+    startIndex = units.length - 1;
+  }
+
+  return units
+    .slice(startIndex)
+    .map((unit) => `${unit.value}${unit.label}`)
+    .join(" ");
 }
 
 /*
@@ -1047,10 +1087,13 @@ export default function Dashboard() {
       )
       .subscribe();
 
-    const interval = setInterval(() => {
-      loadStats();
-      loadContinueWatching();
-    }, 10000);
+    const interval = setInterval(
+      () => {
+        loadStats();
+        loadContinueWatching();
+      },
+      5 * 60 * 1000,
+    );
 
     /*
      * PrivateWatchlist dispatches this event
