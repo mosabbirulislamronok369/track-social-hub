@@ -17,6 +17,7 @@ import RatingBoard from "./components/RatingBoard";
 import Profile from "./components/Profile";
 import IslamicTrack from "./components/IslamicTrack";
 import EventCountdown from "./components/EventCountdown";
+import FavouriteList from "./components/FavouriteList";
 
 type ImportSource = "mal" | "tmdb" | "imdb";
 
@@ -128,6 +129,8 @@ export default function Home() {
       {activeSection === "recommended" && <RecommendedPage />}
 
         {activeSection === "leaderboard" && <Leaderboard />}
+
+        {activeSection === "favourites" && <FavouriteList />}
 
         {activeSection === "watchlist" && (
           <div className="mx-auto w-full max-w-6xl px-4 py-10">

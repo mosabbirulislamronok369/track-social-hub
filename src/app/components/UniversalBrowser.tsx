@@ -17,6 +17,14 @@ import {
 } from "../lib/ratings";
 import RatingDistribution from "./RatingDistribution";
 import RecommendModal from "./RecommendModal";
+import {
+  MAX_FAVOURITES,
+  FAVOURITES_CHANGED_EVENT,
+  FavouriteContentType,
+  addFavourite,
+  fetchFavourites,
+  removeFavourite,
+} from "../lib/favourites";
 
 /* ============================================================
    TYPES
@@ -830,6 +838,22 @@ export default function UniversalBrowser() {
   >(null);
 
   /*
+   * Favourite List ranks, keyed by contentId (e.g.
+   * "movies-1234"). Loaded once on mount (same convention
+   * as `ratings`), refreshed whenever another mounted
+   * component changes the list. YouTube items are never
+   * favouritable, so this only ever holds Anime/TV/Movies
+   * keys.
+   */
+  const [favourites, setFavourites] = useState<
+    Record<string, number>
+  >({});
+
+  const [favouriteBusyId, setFavouriteBusyId] = useState<
+    string | null
+  >(null);
+
+  /*
    * TMDB's search endpoints don't include runtime
    * data. Once search results load, we fetch the
    * real runtime per item in the background and
@@ -897,6 +921,120 @@ export default function UniversalBrowser() {
   useEffect(() => {
     fetchAllRatings().then(setRatings);
   }, []);
+
+  /*
+   * Load Favourite List ranks, and keep them in sync if the
+   * user adds/removes/reorders favourites from the Favourites
+   * page in another mount of this state.
+   */
+  useEffect(() => {
+    function loadFavourites() {
+      fetchFavourites()
+        .then((list) => {
+          const map: Record<string, number> = {};
+
+          for (const item of list) {
+            map[item.contentId] = item.rank;
+          }
+
+          setFavourites(map);
+        })
+        .catch((err) => {
+          console.warn("Failed to load favourites:", err);
+        });
+    }
+
+    loadFavourites();
+
+    window.addEventListener(
+      FAVOURITES_CHANGED_EVENT,
+      loadFavourites,
+    );
+
+    return () =>
+      window.removeEventListener(
+        FAVOURITES_CHANGED_EVENT,
+        loadFavourites,
+      );
+  }, []);
+
+  /*
+   * Toggles an item's Favourite List membership. Only
+   * Anime/TV/Movies are favouritable — YouTube items never
+   * render the button in the first place.
+   */
+  async function toggleFavourite(
+    item: ContentItem,
+    type: ContentType,
+  ) {
+    if (type === "YouTube") {
+      return;
+    }
+
+    const id = getContentId(item, type);
+
+    if (favouriteBusyId === id) {
+      return;
+    }
+
+    setFavouriteBusyId(id);
+
+    const alreadyFavourite = Boolean(favourites[id]);
+
+    try {
+      if (alreadyFavourite) {
+        const next = { ...favourites };
+        delete next[id];
+        setFavourites(next);
+
+        await removeFavourite(id);
+      } else {
+        if (
+          Object.keys(favourites).length >= MAX_FAVOURITES
+        ) {
+          throw new Error(
+            `Favourite List is full (max ${MAX_FAVOURITES}). Remove something first.`,
+          );
+        }
+
+        setFavourites((current) => ({
+          ...current,
+          [id]: Object.keys(current).length + 1,
+        }));
+
+        await addFavourite({
+          contentId: id,
+          contentType: type as FavouriteContentType,
+          title: getTitle(item),
+          subtitle: item.subtitle,
+          image: item.image,
+        });
+      }
+    } catch (err) {
+      // Roll back to the server's actual state rather than
+      // guessing — cheap since it's a single fetch and keeps
+      // this in sync after a failed add/remove.
+      fetchFavourites()
+        .then((list) => {
+          const map: Record<string, number> = {};
+
+          for (const favItem of list) {
+            map[favItem.contentId] = favItem.rank;
+          }
+
+          setFavourites(map);
+        })
+        .catch(() => {});
+
+      alert(
+        err instanceof Error
+          ? err.message
+          : "Failed to update Favourite List.",
+      );
+    } finally {
+      setFavouriteBusyId(null);
+    }
+  }
 
   /*
    * Close 3-dot / actions menu when clicking outside.
@@ -2956,6 +3094,35 @@ export default function UniversalBrowser() {
                     Watch on YouTube
                   </a>
                 )}
+
+{/* ADD TO FAVOURITE LIST — Anime/TV/Movies only */}
+{contentType !== "YouTube" && (() => {
+  const favId = getContentId(selectedItem, contentType);
+  const rank = favourites[favId];
+  const isFavourite = Boolean(rank);
+  const isBusy = favouriteBusyId === favId;
+
+  return (
+    <button
+      type="button"
+      disabled={isBusy}
+      onClick={() =>
+        toggleFavourite(selectedItem, contentType)
+      }
+      className={`mt-6 h-11 w-full rounded-xl border font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+        isFavourite
+          ? "border-yellow-400/40 bg-yellow-500/10 text-yellow-300 hover:bg-yellow-500/20"
+          : "border-white/10 bg-white/5 text-white/70 hover:bg-white/10"
+      }`}
+    >
+      {isBusy
+        ? "Saving..."
+        : isFavourite
+          ? `⭐ #${rank} in Favourite List — Remove`
+          : "☆ Add to Favourite List"}
+    </button>
+  );
+})()}
 
 {/* RECOMMEND TO FRIEND */}
 <button
