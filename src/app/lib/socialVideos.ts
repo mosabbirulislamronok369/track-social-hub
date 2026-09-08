@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-
+import { uploadVideoToTelegram } from "./telegramStorage";
 export type SocialVideo = {
   id: string;
   user_id: string;

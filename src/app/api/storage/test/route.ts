@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { uploadVideoToTelegram } from "../../../lib/telegramStorage";
-
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
