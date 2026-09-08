@@ -13,7 +13,8 @@ export type SidebarSection =
   | "recommended"
   | "islamic"
   | "countdown"
-  | "favourites";
+  | "favourites"
+  | "social";
 
 type NavItem = {
   id: SidebarSection;
@@ -288,6 +289,23 @@ function IconFavourite() {
   );
 }
 
+
+function IconSocial() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]">
+      <path
+        d="M7 4.5h10A2.5 2.5 0 0119.5 7v10a2.5 2.5 0 01-2.5 2.5H7A2.5 2.5 0 014.5 17V7A2.5 2.5 0 017 4.5z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <path
+        d="M10 9l5 3-5 3V9z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 const NAV_ITEMS: NavItem[] = [
   { id: "dashboard", label: "Dashboard", icon: <IconDashboard /> },
   { id: "countdown", label: "Countdown", icon: <IconCountdown /> },
@@ -297,6 +315,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "leaderboard", label: "Leaderboard", icon: <IconLeaderboard /> },
   { id: "recommended", label: "Recommended", icon: <IconGift /> },
   { id: "favourites", label: "Favourites", icon: <IconFavourite /> },
+  { id: "social", label: "Social", icon: <IconSocial /> },
   { id: "watchlist", label: "Watchlist", icon: <IconWatchlist /> },
   { id: "ratings", label: "Ratings", icon: <IconRating /> },
   { id: "profile", label: "Profile", icon: <IconProfile /> },
