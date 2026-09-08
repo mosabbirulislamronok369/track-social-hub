@@ -9,8 +9,7 @@ const SUPABASE_PUBLISHABLE_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 const TELEGRAM_CHAT_ID =
-  process.env.TELEGRAM_CHANNEL_ID ||
-  process.env.YOUR_CHANNEL_ID;
+  process.env.TELEGRAM_STORAGE_CHAT_ID;
 
 export async function POST(request: Request) {
   try {
