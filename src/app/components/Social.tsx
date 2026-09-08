@@ -35,7 +35,6 @@ type CommentRow = {
   created_at: string;
 };
 
-const MAX_BYTES = 49 * 1024 * 1024;
 
 function formatBytes(bytes: number | null) {
   if (!bytes) return "0 B";
@@ -174,11 +173,6 @@ export default function Social() {
       return;
     }
 
-    if (nextFile.size > MAX_BYTES) {
-      setFile(null);
-      setError(`For this upload route, keep videos under ${formatBytes(MAX_BYTES)}.`);
-      return;
-    }
 
     setFile(nextFile);
   }
@@ -213,9 +207,14 @@ export default function Social() {
       if (caption.trim()) formData.append("caption", caption.trim());
 
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", "/api/social/videos/upload");
+      const uploadEndpoint = process.env.NEXT_PUBLIC_TELEGRAM_UPLOAD_URL;
+      if (!uploadEndpoint) throw new Error("NEXT_PUBLIC_TELEGRAM_UPLOAD_URL is not configured.");
+      const uploadSecret = process.env.NEXT_PUBLIC_TELEGRAM_UPLOAD_SECRET;
+      if (!uploadSecret) throw new Error("NEXT_PUBLIC_TELEGRAM_UPLOAD_SECRET is not configured.");
+
+      xhr.open("POST", uploadEndpoint);
       xhr.responseType = "json";
-      xhr.setRequestHeader("Authorization", `Bearer ${session.access_token}`);
+      xhr.setRequestHeader("Authorization", `Bearer ${uploadSecret}`);
 
       await new Promise<void>((resolve, reject) => {
         xhr.upload.onprogress = (event) => {
@@ -225,8 +224,27 @@ export default function Social() {
         xhr.onload = () => {
           const data = xhr.response;
           if (xhr.status >= 200 && xhr.status < 300 && data?.success) {
-            setProgress(100);
-            resolve();
+            fetch("/api/social/videos/metadata", {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                Authorization: `Bearer ${session.access_token}`,
+              },
+              body: JSON.stringify({
+                title: title.trim() || file.name.replace(/\\.[^.]+$/, ""),
+                caption: caption.trim() || null,
+                storage: data.storage,
+              }),
+            })
+              .then(async (metadataResponse) => {
+                const metadata = await metadataResponse.json();
+                if (!metadataResponse.ok || !metadata?.success) {
+                  throw new Error(metadata?.error || "Video metadata save failed.");
+                }
+                setProgress(100);
+                resolve();
+              })
+              .catch(reject);
           } else {
             reject(new Error(data?.error || `Upload failed with HTTP ${xhr.status}.`));
           }
