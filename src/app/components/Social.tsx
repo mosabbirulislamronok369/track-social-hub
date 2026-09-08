@@ -35,7 +35,7 @@ type CommentRow = {
   created_at: string;
 };
 
-const MAX_BYTES = 4 * 1024 * 1024;
+const MAX_BYTES = 49 * 1024 * 1024;
 
 function formatBytes(bytes: number | null) {
   if (!bytes) return "0 B";
@@ -176,7 +176,7 @@ export default function Social() {
 
     if (nextFile.size > MAX_BYTES) {
       setFile(null);
-      setError(`For the current Vercel upload route, keep videos under ${formatBytes(MAX_BYTES)}.`);
+      setError(`For this upload route, keep videos under ${formatBytes(MAX_BYTES)}.`);
       return;
     }
 
@@ -444,7 +444,7 @@ export default function Social() {
                 </div>
                 <h2 className="text-base font-bold text-white">Drop a video here</h2>
                 <p className="mt-1 text-sm text-white/35">or click to browse · MP4 / WebM / MOV</p>
-                <p className="mt-3 text-xs text-white/25">Current upload route limit: 4 MB</p>
+                <p className="mt-3 text-xs text-white/25">Telegram upload · keep under ~49 MB for this Vercel route</p>
               </div>
             ) : (
               <div onClick={(event) => event.stopPropagation()}>
