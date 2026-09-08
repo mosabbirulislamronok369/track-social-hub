@@ -1,11 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 type UploadResult = {
-  telegramFileId?: string;
-  telegramMessageId?: number;
-  chatId?: string;
+  telegramFileId: string;
+  telegramMessageId: number;
+  chatId: string;
   width?: number | null;
   height?: number | null;
   duration?: number | null;
@@ -16,59 +17,69 @@ const MAX_BYTES = 4 * 1024 * 1024;
 
 function formatBytes(bytes: number) {
   if (!bytes) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  const i = Math.min(
-    Math.floor(Math.log(bytes) / Math.log(1024)),
-    units.length - 1,
-  );
-  return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-}
 
-function formatDuration(seconds: number | null | undefined) {
-  if (!seconds) return "—";
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.round(seconds % 60);
-  return `${mins}:${String(secs).padStart(2, "0")}`;
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let index = 0;
+
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index++;
+  }
+
+  return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
 export default function StorageTestPage() {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const [file, setFile] = useState<File | null>(null);
   const [caption, setCaption] = useState("");
-  const [progress, setProgress] = useState(0);
-  const [uploading, setUploading] = useState(false);
-  const [result, setResult] = useState<UploadResult | null>(null);
-  const [error, setError] = useState("");
 
-  function chooseFile(nextFile: File | null) {
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<UploadResult | null>(null);
+
+  function chooseFile() {
+    inputRef.current?.click();
+  }
+
+  function handleFileChange(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const selected = event.target.files?.[0];
+
     setError("");
     setResult(null);
     setProgress(0);
 
-    if (!nextFile) {
+    if (!selected) {
       setFile(null);
       return;
     }
 
-    if (!nextFile.type.startsWith("video/")) {
+    if (!selected.type.startsWith("video/")) {
       setFile(null);
-      setError("Please select a video file.");
+      setError("Only video files are allowed.");
       return;
     }
 
-    if (nextFile.size > MAX_BYTES) {
+    if (selected.size > MAX_BYTES) {
       setFile(null);
       setError(
-        `For this Vercel test, keep the video under ${formatBytes(MAX_BYTES)}.`,
+        `Video is too large. Maximum allowed size is ${formatBytes(
+          MAX_BYTES,
+        )}.`,
       );
       return;
     }
 
-    setFile(nextFile);
+    setFile(selected);
   }
 
-  function upload() {
+  async function upload() {
     if (!file || uploading) return;
 
     setUploading(true);
@@ -76,159 +87,229 @@ export default function StorageTestPage() {
     setError("");
     setResult(null);
 
-    const formData = new FormData();
-    formData.append("video", file, file.name);
+    try {
+      /*
+       * Get the currently logged-in Supabase session.
+       * The access token is sent to the API so the server
+       * can identify the user and insert the metadata row.
+       */
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-    if (caption.trim()) {
-      formData.append("caption", caption.trim());
-    }
-
-    const xhr = new XMLHttpRequest();
-
-    xhr.open("POST", "/api/storage/test");
-    xhr.responseType = "json";
-
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) {
-        setProgress(Math.round((event.loaded / event.total) * 100));
+      if (sessionError) {
+        throw new Error(sessionError.message);
       }
-    };
 
-    xhr.onload = () => {
+      if (!session?.access_token) {
+        throw new Error("Please login first.");
+      }
+
+      const formData = new FormData();
+
+      formData.append("video", file, file.name);
+
+      if (caption.trim()) {
+        formData.append("caption", caption.trim());
+      }
+
+      /*
+       * XMLHttpRequest is used here so we can show
+       * real upload progress.
+       */
+      const xhr = new XMLHttpRequest();
+
+      xhr.open("POST", "/api/storage/test");
+
+      xhr.setRequestHeader(
+        "Authorization",
+        `Bearer ${session.access_token}`,
+      );
+
+      xhr.responseType = "json";
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percentage = Math.round(
+            (event.loaded / event.total) * 100,
+          );
+
+          setProgress(percentage);
+        }
+      };
+
+      xhr.onload = () => {
+        setUploading(false);
+
+        const data = xhr.response;
+
+        if (
+          xhr.status >= 200 &&
+          xhr.status < 300 &&
+          data?.success
+        ) {
+          setProgress(100);
+          setResult(data.storage ?? null);
+          return;
+        }
+
+        setError(
+          data?.error ||
+            data?.details ||
+            `Upload failed with HTTP ${
+              xhr.status || "unknown"
+            }.`,
+        );
+      };
+
+      xhr.onerror = () => {
+        setUploading(false);
+        setError(
+          "Network error. Please check the deployment and try again.",
+        );
+      };
+
+      xhr.onabort = () => {
+        setUploading(false);
+        setError("Upload cancelled.");
+      };
+
+      xhr.send(formData);
+    } catch (err) {
       setUploading(false);
-
-      const data = xhr.response;
-
-      if (xhr.status >= 200 && xhr.status < 300 && data?.success) {
-        setProgress(100);
-        setResult(data.storage ?? null);
-        return;
-      }
 
       setError(
-        data?.error ||
-          `Upload failed with HTTP ${xhr.status || "unknown"}.`,
+        err instanceof Error
+          ? err.message
+          : "Upload failed.",
       );
-    };
-
-    xhr.onerror = () => {
-      setUploading(false);
-      setError("Network error. Check the Vercel deployment and try again.");
-    };
-
-    xhr.onabort = () => {
-      setUploading(false);
-      setError("Upload cancelled.");
-    };
-
-    xhr.send(formData);
+    }
   }
 
   return (
     <main
       style={{
         minHeight: "100vh",
-        padding: "48px 20px",
         background:
-          "radial-gradient(circle at 15% 10%, rgba(99,102,241,.20), transparent 32%), radial-gradient(circle at 85% 80%, rgba(168,85,247,.16), transparent 32%), #07070b",
-        color: "#f5f5f7",
-        fontFamily:
-          "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+          "radial-gradient(circle at top, #21164a 0%, #09090d 45%, #050507 100%)",
+        color: "#fff",
+        padding: "48px 20px",
       }}
     >
-      <div style={{ maxWidth: 760, margin: "0 auto" }}>
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 760,
+          margin: "0 auto",
+        }}
+      >
         <div
           style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "7px 12px",
-            border: "1px solid rgba(255,255,255,.10)",
-            borderRadius: 999,
-            background: "rgba(255,255,255,.045)",
-            color: "#b7b7c4",
-            fontSize: 13,
+            marginBottom: 28,
           }}
         >
-          <span
+          <div
             style={{
-              width: 7,
-              height: 7,
-              borderRadius: "50%",
-              background: "#4ade80",
-              boxShadow: "0 0 12px rgba(74,222,128,.8)",
+              display: "inline-flex",
+              padding: "7px 12px",
+              borderRadius: 999,
+              background: "rgba(124, 58, 237, 0.15)",
+              border: "1px solid rgba(139, 92, 246, 0.3)",
+              color: "#c4b5fd",
+              fontSize: 13,
+              fontWeight: 700,
+              marginBottom: 14,
             }}
-          />
-          Telegram Storage • Phase 1
+          >
+            TELEGRAM STORAGE TEST
+          </div>
+
+          <h1
+            style={{
+              margin: 0,
+              fontSize: "clamp(32px, 6vw, 54px)",
+              lineHeight: 1.05,
+              fontWeight: 800,
+              letterSpacing: "-0.04em",
+            }}
+          >
+            Telegram Video Storage
+          </h1>
+
+          <p
+            style={{
+              marginTop: 14,
+              marginBottom: 0,
+              color: "#a1a1aa",
+              fontSize: 16,
+              lineHeight: 1.6,
+            }}
+          >
+            Upload a small video to test Telegram storage
+            and Supabase metadata saving.
+          </p>
         </div>
-
-        <h1
-          style={{
-            margin: "18px 0 10px",
-            fontSize: "clamp(34px, 6vw, 58px)",
-            lineHeight: 1.02,
-            letterSpacing: "-.045em",
-          }}
-        >
-          Storage Test
-        </h1>
-
-        <p
-          style={{
-            margin: 0,
-            maxWidth: 620,
-            color: "#a7a7b3",
-            fontSize: 16,
-            lineHeight: 1.7,
-          }}
-        >
-          Upload a small test video. The server will forward it to your
-          private Telegram storage channel without exposing your bot token to
-          the browser.
-        </p>
 
         <section
           style={{
-            marginTop: 30,
-            padding: 22,
-            border: "1px solid rgba(255,255,255,.10)",
+            background: "rgba(24, 24, 29, 0.88)",
+            border: "1px solid rgba(255,255,255,0.09)",
             borderRadius: 24,
-            background: "rgba(255,255,255,.055)",
-            backdropFilter: "blur(18px)",
-            boxShadow: "0 24px 80px rgba(0,0,0,.32)",
+            padding: 24,
+            boxShadow: "0 20px 70px rgba(0,0,0,0.35)",
           }}
         >
           <input
             ref={inputRef}
             type="file"
-            accept="video/*"
-            hidden
-            onChange={(event) =>
-              chooseFile(event.target.files?.[0] ?? null)
-            }
+            accept="video/mp4,video/webm,video/quicktime"
+            onChange={handleFileChange}
+            style={{ display: "none" }}
           />
 
           <button
             type="button"
-            onClick={() => inputRef.current?.click()}
+            onClick={chooseFile}
             disabled={uploading}
             style={{
               width: "100%",
               minHeight: 180,
               borderRadius: 20,
-              border: "1px dashed rgba(255,255,255,.20)",
-              background: "rgba(0,0,0,.18)",
+              border: "1px dashed rgba(167,139,250,0.55)",
+              background:
+                "linear-gradient(145deg, rgba(124,58,237,0.10), rgba(59,130,246,0.05))",
               color: "#fff",
               cursor: uploading ? "not-allowed" : "pointer",
-              opacity: uploading ? 0.65 : 1,
+              padding: 24,
             }}
           >
-            <div style={{ fontSize: 38, marginBottom: 10 }}>↑</div>
-            <strong style={{ fontSize: 16 }}>
-              {file ? "Choose another video" : "Choose a test video"}
-            </strong>
-            <div style={{ marginTop: 8, color: "#8f8f9b", fontSize: 13 }}>
-              MP4/WebM/MOV • max 4 MB for Vercel test
+            <div
+              style={{
+                fontSize: 38,
+                marginBottom: 12,
+              }}
+            >
+              ↑
+            </div>
+
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 800,
+              }}
+            >
+              {file ? "Choose another video" : "Choose a video"}
+            </div>
+
+            <div
+              style={{
+                marginTop: 8,
+                color: "#a1a1aa",
+                fontSize: 14,
+              }}
+            >
+              MP4/WebM/MOV • max 4 MB for this Vercel test
             </div>
           </button>
 
@@ -236,51 +317,66 @@ export default function StorageTestPage() {
             <div
               style={{
                 marginTop: 16,
-                padding: 15,
+                padding: 16,
                 borderRadius: 16,
-                background: "rgba(255,255,255,.05)",
-                border: "1px solid rgba(255,255,255,.07)",
+                background: "#202024",
+                border: "1px solid rgba(255,255,255,0.07)",
               }}
             >
-              <div style={{ fontWeight: 650, wordBreak: "break-word" }}>
+              <div
+                style={{
+                  fontWeight: 700,
+                  wordBreak: "break-word",
+                }}
+              >
                 {file.name}
               </div>
-              <div style={{ marginTop: 5, color: "#9999a5", fontSize: 13 }}>
-                {formatBytes(file.size)} • {file.type || "video"}
+
+              <div
+                style={{
+                  marginTop: 7,
+                  color: "#a1a1aa",
+                  fontSize: 14,
+                }}
+              >
+                {formatBytes(file.size)} • {file.type}
               </div>
             </div>
           )}
 
-          <label
-            style={{
-              display: "block",
-              marginTop: 18,
-              color: "#b7b7c2",
-              fontSize: 13,
-            }}
-          >
-            Optional caption
-            <input
-              value={caption}
-              onChange={(event) => setCaption(event.target.value)}
-              maxLength={1024}
-              disabled={uploading}
-              placeholder="Storage test video"
+          <div style={{ marginTop: 20 }}>
+            <label
               style={{
                 display: "block",
+                marginBottom: 8,
+                color: "#d4d4d8",
+                fontSize: 14,
+                fontWeight: 700,
+              }}
+            >
+              Optional caption
+            </label>
+
+            <input
+              value={caption}
+              onChange={(event) =>
+                setCaption(event.target.value)
+              }
+              disabled={uploading}
+              placeholder="Write a caption..."
+              style={{
                 width: "100%",
                 boxSizing: "border-box",
-                marginTop: 8,
-                padding: "13px 14px",
-                borderRadius: 13,
-                border: "1px solid rgba(255,255,255,.10)",
-                outline: "none",
-                background: "rgba(0,0,0,.22)",
+                padding: "15px 16px",
+                borderRadius: 14,
+                border: "1px solid rgba(255,255,255,0.1)",
+                background: "#111116",
                 color: "#fff",
-                fontSize: 14,
+                outline: "none",
+                fontSize: 15,
               }}
             />
-          </label>
+          </div>
 
           {uploading && (
             <div style={{ marginTop: 20 }}>
@@ -288,30 +384,30 @@ export default function StorageTestPage() {
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
-                  color: "#bdbdc8",
-                  fontSize: 13,
                   marginBottom: 8,
+                  fontSize: 13,
+                  color: "#a1a1aa",
                 }}
               >
-                <span>Uploading to Telegram…</span>
+                <span>Uploading...</span>
                 <span>{progress}%</span>
               </div>
+
               <div
                 style={{
                   height: 8,
-                  overflow: "hidden",
                   borderRadius: 999,
-                  background: "rgba(255,255,255,.08)",
+                  background: "#2a2a31",
+                  overflow: "hidden",
                 }}
               >
                 <div
                   style={{
-                    width: `${progress}%`,
                     height: "100%",
-                    borderRadius: 999,
+                    width: `${progress}%`,
                     background:
-                      "linear-gradient(90deg, #8b5cf6, #22d3ee)",
-                    transition: "width .15s ease",
+                      "linear-gradient(90deg, #7c3aed, #4f46e5)",
+                    transition: "width 0.2s ease",
                   }}
                 />
               </div>
@@ -324,41 +420,49 @@ export default function StorageTestPage() {
             disabled={!file || uploading}
             style={{
               width: "100%",
-              marginTop: 18,
-              padding: "14px 18px",
+              marginTop: 20,
+              padding: "16px 20px",
               border: 0,
-              borderRadius: 14,
+              borderRadius: 15,
               background:
                 !file || uploading
-                  ? "rgba(255,255,255,.10)"
-                  : "linear-gradient(135deg, #7c3aed, #4f46e5)",
-              color: !file || uploading ? "#777783" : "#fff",
-              fontWeight: 700,
-              cursor: !file || uploading ? "not-allowed" : "pointer",
+                  ? "#37323f"
+                  : "linear-gradient(90deg, #7c3aed, #4f46e5)",
+              color: "#fff",
+              fontSize: 16,
+              fontWeight: 800,
+              cursor:
+                !file || uploading
+                  ? "not-allowed"
+                  : "pointer",
               boxShadow:
                 !file || uploading
                   ? "none"
-                  : "0 12px 30px rgba(99,102,241,.25)",
+                  : "0 10px 30px rgba(99,102,241,0.25)",
             }}
           >
-            {uploading ? "Uploading…" : "Upload to Telegram"}
+            {uploading
+              ? `Uploading ${progress}%`
+              : "Upload to Telegram"}
           </button>
 
           {error && (
             <div
-              role="alert"
               style={{
-                marginTop: 16,
-                padding: 13,
-                borderRadius: 13,
-                border: "1px solid rgba(248,113,113,.25)",
-                background: "rgba(248,113,113,.08)",
+                marginTop: 18,
+                padding: 16,
+                borderRadius: 15,
+                background: "rgba(127,29,29,0.18)",
+                border: "1px solid rgba(248,113,113,0.3)",
                 color: "#fca5a5",
-                fontSize: 14,
                 lineHeight: 1.5,
+                wordBreak: "break-word",
               }}
             >
-              {error}
+              <strong>Upload failed</strong>
+              <div style={{ marginTop: 5 }}>
+                {error}
+              </div>
             </div>
           )}
 
@@ -366,65 +470,112 @@ export default function StorageTestPage() {
             <div
               style={{
                 marginTop: 18,
-                padding: 17,
+                padding: 18,
                 borderRadius: 16,
-                border: "1px solid rgba(74,222,128,.22)",
-                background: "rgba(74,222,128,.07)",
+                background: "rgba(22,163,74,0.10)",
+                border: "1px solid rgba(74,222,128,0.3)",
               }}
             >
               <div
                 style={{
-                  fontWeight: 750,
                   color: "#86efac",
-                  marginBottom: 12,
+                  fontSize: 16,
+                  fontWeight: 800,
+                  marginBottom: 14,
                 }}
               >
                 ✓ Uploaded successfully
               </div>
 
-              <div style={{ display: "grid", gap: 8, fontSize: 13 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gap: 9,
+                  fontSize: 14,
+                  color: "#d4d4d8",
+                }}
+              >
                 <div>
-                  <span style={{ color: "#92929e" }}>Telegram message ID: </span>
-                  {result.telegramMessageId ?? "—"}
+                  Telegram message ID:{" "}
+                  <strong>
+                    {result.telegramMessageId}
+                  </strong>
                 </div>
-                <div>
-                  <span style={{ color: "#92929e" }}>File ID: </span>
-                  <code style={{ wordBreak: "break-all" }}>
-                    {result.telegramFileId ?? "—"}
-                  </code>
+
+                <div
+                  style={{
+                    wordBreak: "break-all",
+                  }}
+                >
+                  File ID:{" "}
+                  <strong>
+                    {result.telegramFileId}
+                  </strong>
                 </div>
-                <div>
-                  <span style={{ color: "#92929e" }}>Duration: </span>
-                  {formatDuration(result.duration)}
-                </div>
-                <div>
-                  <span style={{ color: "#92929e" }}>Dimensions: </span>
-                  {result.width && result.height
-                    ? `${result.width} × ${result.height}`
-                    : "—"}
-                </div>
-                <div>
-                  <span style={{ color: "#92929e" }}>Telegram file size: </span>
-                  {result.fileSize ? formatBytes(result.fileSize) : "—"}
-                </div>
+
+                {result.duration != null && (
+                  <div>
+                    Duration:{" "}
+                    <strong>
+                      {result.duration}s
+                    </strong>
+                  </div>
+                )}
+
+                {result.width != null &&
+                  result.height != null && (
+                    <div>
+                      Dimensions:{" "}
+                      <strong>
+                        {result.width} × {result.height}
+                      </strong>
+                    </div>
+                  )}
+
+                {result.fileSize != null && (
+                  <div>
+                    Telegram file size:{" "}
+                    <strong>
+                      {formatBytes(result.fileSize)}
+                    </strong>
+                  </div>
+                )}
               </div>
             </div>
           )}
         </section>
 
-        <p
+        <div
           style={{
-            marginTop: 18,
-            color: "#777783",
-            fontSize: 12,
-            lineHeight: 1.6,
+            marginTop: 22,
+            display: "grid",
+            gap: 10,
+            color: "#71717a",
+            fontSize: 13,
+            lineHeight: 1.5,
           }}
         >
-          Test page only. The 4 MB browser limit is intentional because Vercel
-          Functions currently reject incoming function payloads above 4.5 MB.
-          The final Social upload architecture should use a direct/large-file
-          upload path rather than sending large videos through this test route.
-        </p>
+          <div>
+            <strong style={{ color: "#a1a1aa" }}>
+              Telegram:
+            </strong>{" "}
+            actual video storage
+          </div>
+
+          <div>
+            <strong style={{ color: "#a1a1aa" }}>
+              Supabase:
+            </strong>{" "}
+            video metadata only
+          </div>
+
+          <div>
+            <strong style={{ color: "#a1a1aa" }}>
+              Supabase Storage:
+            </strong>{" "}
+            not used
+          </div>
+        </div>
       </div>
     </main>
   );
