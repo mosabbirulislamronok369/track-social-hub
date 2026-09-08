@@ -57,11 +57,7 @@ function formatDuration(seconds: number | null) {
 }
 
 function timeAgo(value: string) {
-  const diff = Math.max(
-    0,
-    Date.now() - new Date(value).getTime(),
-  );
-
+  const diff = Math.max(0, Date.now() - new Date(value).getTime());
   const minutes = Math.floor(diff / 60000);
 
   if (minutes < 1) return "Just now";
@@ -83,34 +79,29 @@ export default function Social() {
 
   const [videos, setVideos] = useState<SocialVideo[]>([]);
   const [file, setFile] = useState<File | null>(null);
+
   const [caption, setCaption] = useState("");
   const [title, setTitle] = useState("");
 
   const [progress, setProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [currentUserId, setCurrentUserId] =
-    useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  const [likedIds, setLikedIds] =
-    useState<Set<string>>(new Set());
+  const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
+  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>(
+    {},
+  );
 
-  const [likeCounts, setLikeCounts] =
-    useState<Record<string, number>>({});
-
-  const [commentCounts, setCommentCounts] =
-    useState<Record<string, number>>({});
-
-  const [openComments, setOpenComments] =
-    useState<string | null>(null);
-
-  const [comments, setComments] =
-    useState<Record<string, CommentRow[]>>({});
-
+  const [openComments, setOpenComments] = useState<string | null>(null);
+  const [comments, setComments] = useState<Record<string, CommentRow[]>>({});
   const [commentDraft, setCommentDraft] = useState("");
+
   const [commentLoading, setCommentLoading] = useState(false);
   const [actionError, setActionError] = useState("");
 
@@ -121,43 +112,27 @@ export default function Social() {
     const { data, error: queryError } = await supabase
       .from("social_videos")
       .select("*")
-      .order("created_at", {
-        ascending: false,
-      })
+      .order("created_at", { ascending: false })
       .limit(30);
 
     if (queryError) {
-      console.error(
-        "Social feed error:",
-        queryError,
-      );
-
+      console.error("Social feed error:", queryError);
       setError(queryError.message);
       setVideos([]);
     } else {
-      setVideos(
-        (data ?? []) as SocialVideo[],
-      );
+      setVideos((data ?? []) as SocialVideo[]);
     }
 
     setLoading(false);
   }, []);
 
   const loadSocialStats = useCallback(
-    async (
-      items: SocialVideo[],
-      userId: string | null,
-    ) => {
+    async (items: SocialVideo[], userId: string | null) => {
       if (!items.length) return;
 
-      const ids = items.map(
-        (item) => item.id,
-      );
+      const ids = items.map((item) => item.id);
 
-      const [
-        { data: likes },
-        { data: commentsData },
-      ] = await Promise.all([
+      const [{ data: likes }, { data: commentsData }] = await Promise.all([
         supabase
           .from("social_likes")
           .select("video_id,user_id")
@@ -169,15 +144,8 @@ export default function Social() {
           .in("video_id", ids),
       ]);
 
-      const nextLikes: Record<
-        string,
-        number
-      > = {};
-
-      const nextComments: Record<
-        string,
-        number
-      > = {};
+      const nextLikes: Record<string, number> = {};
+      const nextComments: Record<string, number> = {};
 
       for (const id of ids) {
         nextLikes[id] = 0;
@@ -190,10 +158,7 @@ export default function Social() {
         nextLikes[row.video_id] =
           (nextLikes[row.video_id] ?? 0) + 1;
 
-        if (
-          userId &&
-          row.user_id === userId
-        ) {
+        if (userId && row.user_id === userId) {
           mine.add(row.video_id);
         }
       }
@@ -216,9 +181,7 @@ export default function Social() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      setCurrentUserId(
-        user?.id ?? null,
-      );
+      setCurrentUserId(user?.id ?? null);
     })();
   }, []);
 
@@ -228,20 +191,11 @@ export default function Social() {
 
   useEffect(() => {
     if (videos.length) {
-      loadSocialStats(
-        videos,
-        currentUserId,
-      );
+      loadSocialStats(videos, currentUserId);
     }
-  }, [
-    videos,
-    currentUserId,
-    loadSocialStats,
-  ]);
+  }, [videos, currentUserId, loadSocialStats]);
 
-  function chooseFile(
-    nextFile: File | null,
-  ) {
+  function chooseFile(nextFile: File | null) {
     setError("");
     setProgress(0);
 
@@ -252,34 +206,46 @@ export default function Social() {
 
     if (!nextFile.type.startsWith("video/")) {
       setFile(null);
-      setError(
-        "Please choose a video file.",
-      );
+      setError("Please choose a video file.");
       return;
     }
 
     setFile(nextFile);
   }
 
-  function handleDrop(
-    event: DragEvent<HTMLDivElement>,
-  ) {
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
+
     setDragging(false);
 
-    chooseFile(
-      event.dataTransfer.files?.[0] ??
-        null,
-    );
+    chooseFile(event.dataTransfer.files?.[0] ?? null);
   }
 
-  function handleInput(
-    event: ChangeEvent<HTMLInputElement>,
-  ) {
-    chooseFile(
-      event.target.files?.[0] ?? null,
-    );
+  function handleInput(event: ChangeEvent<HTMLInputElement>) {
+    chooseFile(event.target.files?.[0] ?? null);
   }
+
+  /*
+   * IMPORTANT:
+   *
+   * Browser
+   *   ↓
+   * Cloudflare Worker
+   *   ↓
+   * Telegram
+   *
+   * Vercel is NOT used for the video binary upload.
+   *
+   * After Telegram succeeds:
+   *
+   * Browser
+   *   ↓
+   * /api/social/videos/metadata
+   *   ↓
+   * Supabase
+   *
+   * Only metadata goes through Vercel.
+   */
 
   async function upload() {
     if (!file || uploading) return;
@@ -294,181 +260,187 @@ export default function Social() {
       } = await supabase.auth.getSession();
 
       if (!session?.access_token) {
+        throw new Error("Please login before uploading a video.");
+      }
+
+      const uploadEndpoint =
+        process.env.NEXT_PUBLIC_TELEGRAM_UPLOAD_URL;
+
+      if (!uploadEndpoint) {
         throw new Error(
-          "Please login before uploading a video.",
+          "NEXT_PUBLIC_TELEGRAM_UPLOAD_URL is not configured.",
+        );
+      }
+
+      /*
+       * The Worker currently expects:
+       *
+       * Authorization: Bearer <UPLOAD_SECRET>
+       *
+       * NOTE:
+       * This value is exposed to the browser when using NEXT_PUBLIC_.
+       * For the current setup this matches your Worker architecture.
+       */
+      const uploadSecret =
+        process.env.NEXT_PUBLIC_TELEGRAM_UPLOAD_SECRET;
+
+      if (!uploadSecret) {
+        throw new Error(
+          "NEXT_PUBLIC_TELEGRAM_UPLOAD_SECRET is not configured.",
         );
       }
 
       const formData = new FormData();
 
-      formData.append(
-        "video",
-        file,
-        file.name,
-      );
+      formData.append("video", file, file.name);
 
       formData.append(
         "title",
         title.trim() ||
-          file.name.replace(
-            /\.[^.]+$/,
-            "",
-          ),
+          file.name.replace(/\.[^.]+$/, ""),
       );
 
       if (caption.trim()) {
-        formData.append(
-          "caption",
-          caption.trim(),
-        );
+        formData.append("caption", caption.trim());
       }
-
-      /*
-       * IMPORTANT:
-       * The browser no longer talks directly
-       * to Telegram or exposes any upload secret.
-       *
-       * Flow:
-       *
-       * Browser
-       *   ↓
-       * Next.js API
-       *   ↓
-       * Telegram
-       *
-       * The API route uses server-side
-       * TELEGRAM_BOT_TOKEN and CHANNEL_ID.
-       */
 
       const xhr = new XMLHttpRequest();
 
-      xhr.open(
-        "POST",
-        "/api/social/videos/upload",
-      );
-
+      xhr.open("POST", uploadEndpoint);
       xhr.responseType = "json";
 
-      await new Promise<void>(
-        (resolve, reject) => {
-          xhr.upload.onprogress = (
-            event,
-          ) => {
+      xhr.setRequestHeader(
+        "Authorization",
+        `Bearer ${uploadSecret}`,
+      );
+
+      await new Promise<void>((resolve, reject) => {
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const percent = Math.round(
+              (event.loaded / event.total) * 100,
+            );
+
+            setProgress(percent);
+          }
+        };
+
+        xhr.onload = async () => {
+          try {
+            let data = xhr.response;
+
+            /*
+             * Some environments may not automatically parse JSON.
+             */
+            if (!data && xhr.responseText) {
+              try {
+                data = JSON.parse(xhr.responseText);
+              } catch {
+                data = null;
+              }
+            }
+
             if (
-              event.lengthComputable
+              xhr.status < 200 ||
+              xhr.status >= 300 ||
+              !data?.success
             ) {
-              const percent = Math.round(
-                (event.loaded /
-                  event.total) *
-                  100,
+              reject(
+                new Error(
+                  data?.error ||
+                    `Upload failed with HTTP ${xhr.status}.`,
+                ),
               );
 
-              setProgress(percent);
+              return;
             }
-          };
 
-          xhr.onload = async () => {
+            if (!data.storage?.telegram_file_id) {
+              reject(
+                new Error(
+                  "Telegram upload succeeded but no telegram_file_id was returned.",
+                ),
+              );
+
+              return;
+            }
+
+            /*
+             * Telegram upload completed.
+             *
+             * Now save ONLY metadata in Supabase.
+             */
+            const metadataResponse = await fetch(
+              "/api/social/videos/metadata",
+              {
+                method: "POST",
+
+                headers: {
+                  "content-type": "application/json",
+                  Authorization: `Bearer ${session.access_token}`,
+                },
+
+                body: JSON.stringify({
+                  title:
+                    title.trim() ||
+                    file.name.replace(/\.[^.]+$/, ""),
+
+                  caption:
+                    caption.trim() || null,
+
+                  storage: data.storage,
+                }),
+              },
+            );
+
+            let metadata: any = null;
+
             try {
-              const data =
-                xhr.response;
-
-              if (
-                xhr.status < 200 ||
-                xhr.status >= 300 ||
-                !data?.success
-              ) {
-                reject(
-                  new Error(
-                    data?.error ||
-                      `Upload failed with HTTP ${xhr.status}.`,
-                  ),
-                );
-
-                return;
-              }
-
-              /*
-               * Telegram upload succeeded.
-               *
-               * Now save only metadata + Telegram
-               * file_id into Supabase.
-               */
-
-              const metadataResponse =
-                await fetch(
-                  "/api/social/videos/metadata",
-                  {
-                    method: "POST",
-
-                    headers: {
-                      "content-type":
-                        "application/json",
-
-                      Authorization:
-                        `Bearer ${session.access_token}`,
-                    },
-
-                    body: JSON.stringify({
-                      title:
-                        title.trim() ||
-                        file.name.replace(
-                          /\.[^.]+$/,
-                          "",
-                        ),
-
-                      caption:
-                        caption.trim() ||
-                        null,
-
-                      storage:
-                        data.storage,
-                    }),
-                  },
-                );
-
-              const metadata =
-                await metadataResponse.json();
-
-              if (
-                !metadataResponse.ok ||
-                !metadata?.success
-              ) {
-                reject(
-                  new Error(
-                    metadata?.error ||
-                      "Video metadata save failed.",
-                  ),
-                );
-
-                return;
-              }
-
-              setProgress(100);
-              resolve();
-            } catch (err) {
-              reject(err);
+              metadata = await metadataResponse.json();
+            } catch {
+              metadata = null;
             }
-          };
 
-          xhr.onerror = () => {
+            if (
+              !metadataResponse.ok ||
+              !metadata?.success
+            ) {
+              reject(
+                new Error(
+                  metadata?.error ||
+                    "Video uploaded to Telegram, but metadata could not be saved to Supabase.",
+                ),
+              );
+
+              return;
+            }
+
+            setProgress(100);
+
+            resolve();
+          } catch (err) {
             reject(
-              new Error(
-                "Network error while uploading.",
-              ),
+              err instanceof Error
+                ? err
+                : new Error("Upload failed."),
             );
-          };
+          }
+        };
 
-          xhr.onabort = () => {
-            reject(
-              new Error(
-                "Upload cancelled.",
-              ),
-            );
-          };
+        xhr.onerror = () => {
+          reject(
+            new Error(
+              "Network error while uploading to Telegram Worker.",
+            ),
+          );
+        };
 
-          xhr.send(formData);
-        },
-      );
+        xhr.onabort = () => {
+          reject(new Error("Upload cancelled."));
+        };
+
+        xhr.send(formData);
+      });
 
       setFile(null);
       setTitle("");
@@ -481,10 +453,7 @@ export default function Social() {
 
       await loadFeed();
     } catch (err) {
-      console.error(
-        "Social upload error:",
-        err,
-      );
+      console.error("Social upload error:", err);
 
       setError(
         err instanceof Error
@@ -496,21 +465,15 @@ export default function Social() {
     }
   }
 
-  async function toggleLike(
-    videoId: string,
-  ) {
+  async function toggleLike(videoId: string) {
     setActionError("");
 
     if (!currentUserId) {
-      setActionError(
-        "Please login to like videos.",
-      );
-
+      setActionError("Please login to like videos.");
       return;
     }
 
-    const isLiked =
-      likedIds.has(videoId);
+    const isLiked = likedIds.has(videoId);
 
     setLikedIds((prev) => {
       const next = new Set(prev);
@@ -539,10 +502,7 @@ export default function Social() {
           .from("social_likes")
           .delete()
           .eq("video_id", videoId)
-          .eq(
-            "user_id",
-            currentUserId,
-          )
+          .eq("user_id", currentUserId)
       : await supabase
           .from("social_likes")
           .insert({
@@ -573,19 +533,12 @@ export default function Social() {
         ),
       }));
 
-      setActionError(
-        result.error.message,
-      );
+      setActionError(result.error.message);
     }
   }
 
-  async function loadComments(
-    videoId: string,
-  ) {
-    const {
-      data,
-      error: queryError,
-    } = await supabase
+  async function loadComments(videoId: string) {
+    const { data, error: queryError } = await supabase
       .from("social_comments")
       .select(
         "id,video_id,user_id,body,created_at",
@@ -597,29 +550,20 @@ export default function Social() {
       .limit(50);
 
     if (queryError) {
-      setActionError(
-        queryError.message,
-      );
-
+      setActionError(queryError.message);
       return;
     }
 
     setComments((prev) => ({
       ...prev,
-
-      [videoId]:
-        (data ?? []) as CommentRow[],
+      [videoId]: (data ?? []) as CommentRow[],
     }));
   }
 
-  async function toggleComments(
-    videoId: string,
-  ) {
+  async function toggleComments(videoId: string) {
     setActionError("");
 
-    if (
-      openComments === videoId
-    ) {
+    if (openComments === videoId) {
       setOpenComments(null);
       return;
     }
@@ -629,49 +573,34 @@ export default function Social() {
     await loadComments(videoId);
   }
 
-  async function addComment(
-    videoId: string,
-  ) {
-    const body =
-      commentDraft.trim();
+  async function addComment(videoId: string) {
+    const body = commentDraft.trim();
 
-    if (
-      !body ||
-      commentLoading
-    ) {
-      return;
-    }
+    if (!body || commentLoading) return;
 
     if (!currentUserId) {
-      setActionError(
-        "Please login to comment.",
-      );
-
+      setActionError("Please login to comment.");
       return;
     }
 
     setCommentLoading(true);
     setActionError("");
 
-    const {
-      data,
-      error: insertError,
-    } = await supabase
-      .from("social_comments")
-      .insert({
-        video_id: videoId,
-        user_id: currentUserId,
-        body,
-      })
-      .select(
-        "id,video_id,user_id,body,created_at",
-      )
-      .single();
+    const { data, error: insertError } =
+      await supabase
+        .from("social_comments")
+        .insert({
+          video_id: videoId,
+          user_id: currentUserId,
+          body,
+        })
+        .select(
+          "id,video_id,user_id,body,created_at",
+        )
+        .single();
 
     if (insertError) {
-      setActionError(
-        insertError.message,
-      );
+      setActionError(insertError.message);
     } else if (data) {
       setComments((prev) => ({
         ...prev,
@@ -695,13 +624,12 @@ export default function Social() {
     setCommentLoading(false);
   }
 
-  async function shareVideo(
-    videoId: string,
-  ) {
+  async function shareVideo(videoId: string) {
     setActionError("");
 
     const url =
-      `${window.location.origin}/?socialVideo=${encodeURIComponent(videoId)}`;
+      `${window.location.origin}/?socialVideo=` +
+      encodeURIComponent(videoId);
 
     try {
       if (navigator.share) {
@@ -711,9 +639,7 @@ export default function Social() {
           url,
         });
       } else {
-        await navigator.clipboard.writeText(
-          url,
-        );
+        await navigator.clipboard.writeText(url);
 
         setActionError(
           "Link copied to clipboard.",
@@ -725,12 +651,10 @@ export default function Social() {
         );
       }
 
-      await supabase
-        .from("social_shares")
-        .insert({
-          video_id: videoId,
-          user_id: currentUserId,
-        });
+      await supabase.from("social_shares").insert({
+        video_id: videoId,
+        user_id: currentUserId,
+      });
     } catch (err) {
       if (
         err instanceof DOMException &&
@@ -739,30 +663,28 @@ export default function Social() {
         return;
       }
 
-      console.error(
-        "Share error:",
-        err,
-      );
+      console.error("Share error:", err);
     }
   }
 
-  const selectedMeta =
-    useMemo(() => {
-      if (!file) return null;
+  const selectedMeta = useMemo(() => {
+    if (!file) return null;
 
-      return `${formatBytes(file.size)} · ${file.type
-        .replace("video/", "")
-        .toUpperCase()}`;
-    }, [file]);
+    return `${formatBytes(file.size)} · ${file.type
+      .replace("video/", "")
+      .toUpperCase()}`;
+  }, [file]);
 
   return (
     <section className="mx-auto w-full max-w-6xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
       <div className="relative overflow-hidden rounded-[28px] border border-white/[0.08] bg-white/[0.025] shadow-[0_30px_100px_-40px_rgba(124,58,237,0.45)]">
+
         <div className="absolute -right-28 -top-32 h-72 w-72 rounded-full bg-[var(--accent)]/15 blur-3xl" />
 
         <div className="absolute -left-32 top-24 h-64 w-64 rounded-full bg-[var(--accent-2)]/10 blur-3xl" />
 
         <div className="relative p-5 sm:p-7 lg:p-9">
+
           <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="eyebrow mb-2">
@@ -834,7 +756,7 @@ export default function Social() {
                 </p>
 
                 <p className="mt-3 text-xs text-white/25">
-                  Telegram storage · no Supabase Storage
+                  Direct Telegram upload via Cloudflare Worker
                 </p>
               </div>
             ) : (
@@ -844,11 +766,10 @@ export default function Social() {
                 }
               >
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+
                   <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black">
                     <video
-                      src={URL.createObjectURL(
-                        file,
-                      )}
+                      src={URL.createObjectURL(file)}
                       className="h-full w-full object-cover"
                       muted
                       playsInline
@@ -890,12 +811,11 @@ export default function Social() {
                 </div>
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_1.4fr_auto]">
+
                   <input
                     value={title}
                     onChange={(event) =>
-                      setTitle(
-                        event.target.value,
-                      )
+                      setTitle(event.target.value)
                     }
                     placeholder="Post title"
                     className="h-11 rounded-xl border border-white/[0.08] bg-black/25 px-4 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[var(--accent)]/50"
@@ -904,9 +824,7 @@ export default function Social() {
                   <input
                     value={caption}
                     onChange={(event) =>
-                      setCaption(
-                        event.target.value,
-                      )
+                      setCaption(event.target.value)
                     }
                     placeholder="Say something about this video..."
                     className="h-11 rounded-xl border border-white/[0.08] bg-black/25 px-4 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[var(--accent)]/50"
@@ -916,7 +834,7 @@ export default function Social() {
                     type="button"
                     disabled={uploading}
                     onClick={upload}
-                    className="h-11 rounded-xl bg-white px-5 text-sm font-extrabold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="h-11 rounded-xl bg-white text-sm font-extrabold text-black transition hover:bg-white/90 disabled:opacity-50"
                   >
                     {uploading
                       ? `Uploading ${progress}%`
@@ -953,22 +871,22 @@ export default function Social() {
 
       {loading ? (
         <div className="mt-5 grid gap-5 lg:grid-cols-2">
-          {Array.from({
-            length: 4,
-          }).map((_, index) => (
-            <div
-              key={index}
-              className="overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.025]"
-            >
-              <div className="aspect-video animate-pulse bg-white/[0.04]" />
+          {Array.from({ length: 4 }).map(
+            (_, index) => (
+              <div
+                key={index}
+                className="overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.025]"
+              >
+                <div className="aspect-video animate-pulse bg-white/[0.04]" />
 
-              <div className="space-y-3 p-5">
-                <div className="h-4 w-2/3 animate-pulse rounded bg-white/[0.05]" />
-                <div className="h-3 w-full animate-pulse rounded bg-white/[0.04]" />
-                <div className="h-3 w-1/2 animate-pulse rounded bg-white/[0.04]" />
+                <div className="space-y-3 p-5">
+                  <div className="h-4 w-2/3 animate-pulse rounded bg-white/[0.05]" />
+                  <div className="h-3 w-full animate-pulse rounded bg-white/[0.04]" />
+                  <div className="h-3 w-1/2 animate-pulse rounded bg-white/[0.04]" />
+                </div>
               </div>
-            </div>
-          ))}
+            ),
+          )}
         </div>
       ) : videos.length === 0 ? (
         <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.025] px-6 py-16 text-center">
@@ -1032,11 +950,13 @@ export default function Social() {
 
                 <div className="p-5">
                   <div className="flex items-start gap-3">
+
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,var(--accent-soft),rgba(255,255,255,.08))] text-sm font-black text-[var(--accent-2)]">
                       U
                     </div>
 
                     <div className="min-w-0 flex-1">
+
                       <div className="flex items-center justify-between gap-3">
                         <p className="truncate text-sm font-bold text-white">
                           {video.title ||
@@ -1058,12 +978,11 @@ export default function Social() {
                       )}
 
                       <div className="mt-4 flex items-center gap-2 border-t border-white/[0.06] pt-4">
+
                         <button
                           type="button"
                           onClick={() =>
-                            toggleLike(
-                              video.id,
-                            )
+                            toggleLike(video.id)
                           }
                           className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition ${
                             isLiked
@@ -1101,9 +1020,7 @@ export default function Social() {
                         <button
                           type="button"
                           onClick={() =>
-                            shareVideo(
-                              video.id,
-                            )
+                            shareVideo(video.id)
                           }
                           className="ml-auto rounded-lg px-3 py-2 text-xs font-bold text-white/40 transition hover:bg-white/[0.05] hover:text-white"
                         >
@@ -1114,7 +1031,9 @@ export default function Social() {
                       {openComments ===
                         video.id && (
                         <div className="mt-4 rounded-xl border border-white/[0.06] bg-black/20 p-3">
+
                           <div className="max-h-56 space-y-3 overflow-y-auto pr-1">
+
                             {cardComments.length ===
                             0 ? (
                               <p className="py-3 text-center text-xs text-white/25">
@@ -1122,9 +1041,7 @@ export default function Social() {
                               </p>
                             ) : (
                               cardComments.map(
-                                (
-                                  comment,
-                                ) => (
+                                (comment) => (
                                   <div
                                     key={
                                       comment.id
@@ -1132,6 +1049,7 @@ export default function Social() {
                                     className="rounded-lg bg-white/[0.025] px-3 py-2.5"
                                   >
                                     <div className="flex items-center justify-between gap-3">
+
                                       <span className="text-[11px] font-bold text-white/55">
                                         {comment.user_id ===
                                         currentUserId
@@ -1147,9 +1065,7 @@ export default function Social() {
                                     </div>
 
                                     <p className="mt-1 text-xs leading-5 text-white/45">
-                                      {
-                                        comment.body
-                                      }
+                                      {comment.body}
                                     </p>
                                   </div>
                                 ),
@@ -1158,6 +1074,7 @@ export default function Social() {
                           </div>
 
                           <div className="mt-3 flex gap-2">
+
                             <input
                               value={
                                 commentDraft
@@ -1166,8 +1083,7 @@ export default function Social() {
                                 event,
                               ) =>
                                 setCommentDraft(
-                                  event
-                                    .target
+                                  event.target
                                     .value,
                                 )
                               }
@@ -1206,6 +1122,7 @@ export default function Social() {
                       )}
 
                       <div className="mt-3 flex items-center gap-3 text-[11px] text-white/25">
+
                         <span>
                           {formatBytes(
                             video.file_size,
