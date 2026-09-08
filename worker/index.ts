@@ -20,12 +20,25 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
+function getCaption(
+  file: File,
+  caption: FormDataEntryValue | null,
+  title: FormDataEntryValue | null,
+): string {
+  if (typeof caption === "string" && caption.trim()) {
+    return caption.trim();
+  }
+
+  if (typeof title === "string" && title.trim()) {
+    return title.trim();
+  }
+
+  return file.name;
+}
+
 export default {
-  async fetch(
-    request: Request,
-    env: Env,
-  ): Promise<Response> {
-    // CORS preflight
+  async fetch(request: Request, env: Env): Promise<Response> {
+    // CORS
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
@@ -33,7 +46,7 @@ export default {
       });
     }
 
-    // Only POST is allowed
+    // POST only
     if (request.method !== "POST") {
       return json(
         {
@@ -44,7 +57,7 @@ export default {
       );
     }
 
-    // Check environment variables first
+    // Environment variables
     if (
       !env.TELEGRAM_BOT_TOKEN ||
       !env.TELEGRAM_CHANNEL_ID ||
@@ -59,7 +72,7 @@ export default {
       );
     }
 
-    // Check upload authorization
+    // Authorization
     const authorization =
       request.headers.get("authorization") || "";
 
@@ -77,166 +90,314 @@ export default {
     }
 
     try {
-      // Read incoming multipart form
       const incoming = await request.formData();
 
-      const file = incoming.get("video");
+      const video = incoming.get("video");
+      const photo = incoming.get("photo");
+
       const caption = incoming.get("caption");
       const title = incoming.get("title");
 
-      // Validate file
-      if (!(file instanceof File)) {
+      // Cannot upload both together
+      if (video instanceof File && photo instanceof File) {
         return json(
           {
             success: false,
-            error: "A video file is required.",
+            error:
+              "Please upload either a photo or a video, not both.",
           },
           400,
         );
       }
 
-      if (!file.type.startsWith("video/")) {
-        return json(
-          {
-            success: false,
-            error: "Only video files are allowed.",
-          },
-          400,
+      // ==================================================
+      // PHOTO
+      // ==================================================
+
+      if (photo instanceof File) {
+        if (!photo.type.startsWith("image/")) {
+          return json(
+            {
+              success: false,
+              error: "Only image files are allowed.",
+            },
+            400,
+          );
+        }
+
+        const telegramForm = new FormData();
+
+        telegramForm.append(
+          "chat_id",
+          env.TELEGRAM_CHANNEL_ID,
         );
+
+        telegramForm.append(
+          "caption",
+          getCaption(photo, caption, title),
+        );
+
+        telegramForm.append(
+          "photo",
+          photo,
+          photo.name,
+        );
+
+        const telegramResponse = await fetch(
+          `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendPhoto`,
+          {
+            method: "POST",
+            body: telegramForm,
+          },
+        );
+
+        const telegramData: any =
+          await telegramResponse.json();
+
+        if (
+          !telegramResponse.ok ||
+          !telegramData?.ok
+        ) {
+          console.error(
+            "Telegram sendPhoto error:",
+            telegramData,
+          );
+
+          return json(
+            {
+              success: false,
+              error:
+                telegramData?.description ||
+                "Telegram photo upload failed.",
+            },
+            502,
+          );
+        }
+
+        const message =
+          telegramData?.result;
+
+        const photos =
+          message?.photo;
+
+        if (
+          !Array.isArray(photos) ||
+          photos.length === 0
+        ) {
+          return json(
+            {
+              success: false,
+              error:
+                "Telegram succeeded but returned no photo file_id.",
+            },
+            502,
+          );
+        }
+
+        // Telegram returns multiple sizes.
+        // Last one is normally the largest.
+        const telegramPhoto =
+          photos[photos.length - 1];
+
+        if (!telegramPhoto?.file_id) {
+          return json(
+            {
+              success: false,
+              error:
+                "Telegram returned an invalid photo.",
+            },
+            502,
+          );
+        }
+
+        return json({
+          success: true,
+
+          message:
+            "Photo uploaded to Telegram successfully.",
+
+          storage: {
+            provider: "telegram",
+            media_type: "photo",
+
+            telegram_chat_id:
+              env.TELEGRAM_CHANNEL_ID,
+
+            telegram_file_id:
+              telegramPhoto.file_id,
+
+            telegram_message_id:
+              message?.message_id ?? null,
+
+            mime_type:
+              photo.type,
+
+            original_filename:
+              photo.name,
+
+            file_size:
+              photo.size,
+
+            width:
+              telegramPhoto.width ?? null,
+
+            height:
+              telegramPhoto.height ?? null,
+
+            duration_seconds:
+              null,
+          },
+        });
       }
 
-      // Build Telegram request
-      const telegramForm = new FormData();
+      // ==================================================
+      // VIDEO
+      // ==================================================
 
-      telegramForm.append(
-        "chat_id",
-        env.TELEGRAM_CHANNEL_ID,
-      );
+      if (video instanceof File) {
+        if (!video.type.startsWith("video/")) {
+          return json(
+            {
+              success: false,
+              error: "Only video files are allowed.",
+            },
+            400,
+          );
+        }
 
-      let finalCaption = file.name;
+        const telegramForm = new FormData();
 
-      if (
-        typeof caption === "string" &&
-        caption.trim()
-      ) {
-        finalCaption = caption.trim();
-      } else if (
-        typeof title === "string" &&
-        title.trim()
-      ) {
-        finalCaption = title.trim();
+        telegramForm.append(
+          "chat_id",
+          env.TELEGRAM_CHANNEL_ID,
+        );
+
+        telegramForm.append(
+          "caption",
+          getCaption(video, caption, title),
+        );
+
+        telegramForm.append(
+          "supports_streaming",
+          "true",
+        );
+
+        telegramForm.append(
+          "video",
+          video,
+          video.name,
+        );
+
+        const telegramResponse = await fetch(
+          `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendVideo`,
+          {
+            method: "POST",
+            body: telegramForm,
+          },
+        );
+
+        const telegramData: any =
+          await telegramResponse.json();
+
+        if (
+          !telegramResponse.ok ||
+          !telegramData?.ok
+        ) {
+          console.error(
+            "Telegram sendVideo error:",
+            telegramData,
+          );
+
+          return json(
+            {
+              success: false,
+              error:
+                telegramData?.description ||
+                "Telegram video upload failed.",
+            },
+            502,
+          );
+        }
+
+        const message =
+          telegramData?.result;
+
+        const telegramVideo =
+          message?.video;
+
+        if (!telegramVideo?.file_id) {
+          return json(
+            {
+              success: false,
+              error:
+                "Telegram succeeded but returned no video file_id.",
+            },
+            502,
+          );
+        }
+
+        return json({
+          success: true,
+
+          message:
+            "Video uploaded to Telegram successfully.",
+
+          storage: {
+            provider: "telegram",
+            media_type: "video",
+
+            telegram_chat_id:
+              env.TELEGRAM_CHANNEL_ID,
+
+            telegram_file_id:
+              telegramVideo.file_id,
+
+            telegram_message_id:
+              message?.message_id ?? null,
+
+            mime_type:
+              video.type,
+
+            original_filename:
+              video.name,
+
+            file_size:
+              video.size,
+
+            duration_seconds:
+              telegramVideo.duration ?? null,
+
+            width:
+              telegramVideo.width ?? null,
+
+            height:
+              telegramVideo.height ?? null,
+          },
+        });
       }
 
-      telegramForm.append(
-        "caption",
-        finalCaption,
-      );
-
-      telegramForm.append(
-        "supports_streaming",
-        "true",
-      );
-
-      telegramForm.append(
-        "video",
-        file,
-        file.name,
-      );
-
-      // Upload to Telegram
-      const telegramResponse = await fetch(
-        `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendVideo`,
+      // No file
+      return json(
         {
-          method: "POST",
-          body: telegramForm,
+          success: false,
+          error:
+            "A photo or video file is required.",
         },
+        400,
       );
-
-      const telegramData: any =
-        await telegramResponse.json();
-
-      // Telegram upload failed
-      if (
-        !telegramResponse.ok ||
-        !telegramData?.ok
-      ) {
-        return json(
-          {
-            success: false,
-            error:
-              telegramData?.description ||
-              "Telegram upload failed.",
-          },
-          502,
-        );
-      }
-
-      // Extract Telegram message/video
-      const message =
-        telegramData?.result;
-
-      const video =
-        message?.video;
-
-      if (!video?.file_id) {
-        return json(
-          {
-            success: false,
-            error:
-              "Telegram succeeded but returned no video file_id.",
-          },
-          502,
-        );
-      }
-
-      // Successful response
-      return json({
-        success: true,
-        message:
-          "Video uploaded to Telegram successfully.",
-        storage: {
-          provider: "telegram",
-
-          telegram_file_id:
-            video.file_id,
-
-          telegram_message_id:
-            message.message_id ?? null,
-
-          mime_type:
-            file.type,
-
-          original_filename:
-            file.name,
-
-          file_size:
-            file.size,
-
-          duration_seconds:
-            video.duration ?? null,
-
-          width:
-            video.width ?? null,
-
-          height:
-            video.height ?? null,
-        },
-      });
     } catch (error) {
       console.error(
         "Telegram Worker upload error:",
         error,
       );
 
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Telegram upload failed.";
-
       return json(
         {
           success: false,
-          error: message,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Telegram upload failed.",
         },
         500,
       );
