@@ -5,17 +5,25 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const SUPABASE_PUBLISHABLE_KEY =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 export async function POST(request: Request) {
   try {
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    // Check Supabase environment variables
+    if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+      console.error("Missing Supabase environment variables.");
+
       return NextResponse.json(
-        { error: "Supabase environment variables are missing." },
+        {
+          error:
+            "Supabase environment variables are missing. Check NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.",
+        },
         { status: 500 },
       );
     }
 
+    // Get user's Supabase access token
     const authorization = request.headers.get("authorization") || "";
 
     if (!authorization.startsWith("Bearer ")) {
@@ -35,17 +43,15 @@ export async function POST(request: Request) {
     }
 
     /*
-     * Create a Supabase client using the user's JWT.
+     * Create a Supabase client with the logged-in user's JWT.
      *
-     * This is important because the social_videos RLS policy checks:
+     * This is required because social_videos RLS uses:
      *
-     *   auth.uid() = user_id
-     *
-     * The JWT must therefore be attached to the database request.
+     * auth.uid() = user_id
      */
     const userSupabase = createClient(
       SUPABASE_URL,
-      SUPABASE_ANON_KEY,
+      SUPABASE_PUBLISHABLE_KEY,
       {
         auth: {
           autoRefreshToken: false,
@@ -59,20 +65,22 @@ export async function POST(request: Request) {
       },
     );
 
+    // Verify the logged-in user
     const {
       data: { user },
       error: userError,
     } = await userSupabase.auth.getUser();
 
     if (userError || !user) {
-      console.error("Supabase user verification error:", userError);
+      console.error("Supabase authentication error:", userError);
 
       return NextResponse.json(
-        { error: "Invalid or expired session." },
+        { error: "Invalid or expired session. Please login again." },
         { status: 401 },
       );
     }
 
+    // Read request body
     const body = await request.json();
     const storage = body?.storage;
 
@@ -83,26 +91,34 @@ export async function POST(request: Request) {
       );
     }
 
+    // Telegram file ID is required
     if (
       !storage.telegram_file_id ||
       typeof storage.telegram_file_id !== "string"
     ) {
       return NextResponse.json(
-        { error: "Telegram file ID is required." },
+        { error: "Telegram file ID is missing." },
         { status: 400 },
       );
     }
 
+    // Clean title
     const title =
       typeof body.title === "string" && body.title.trim()
         ? body.title.trim()
         : null;
 
+    // Clean caption
     const caption =
       typeof body.caption === "string" && body.caption.trim()
         ? body.caption.trim()
         : null;
 
+    /*
+     * IMPORTANT:
+     * user_id comes directly from the verified Supabase session.
+     * Do NOT trust a user_id sent from the browser.
+     */
     const insertData = {
       user_id: user.id,
 
@@ -153,6 +169,7 @@ export async function POST(request: Request) {
       original_filename: storage.original_filename,
     });
 
+    // Insert into Supabase
     const { data, error } = await userSupabase
       .from("social_videos")
       .insert(insertData)
@@ -160,7 +177,12 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
-      console.error("Social metadata insert error:", error);
+      console.error("Social video metadata insert error:", {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      });
 
       return NextResponse.json(
         {
