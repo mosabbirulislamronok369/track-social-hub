@@ -8,27 +8,48 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
+const TELEGRAM_CHAT_ID =
+  process.env.TELEGRAM_CHANNEL_ID ||
+  process.env.YOUR_CHANNEL_ID;
+
 export async function POST(request: Request) {
   try {
-    // Check Supabase environment variables
-    if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-      console.error("Missing Supabase environment variables.");
+    // --------------------------------------------------
+    // Environment check
+    // --------------------------------------------------
 
+    if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
       return NextResponse.json(
         {
           error:
-            "Supabase environment variables are missing. Check NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.",
+            "Supabase environment variables are missing.",
         },
         { status: 500 },
       );
     }
 
-    // Get user's Supabase access token
-    const authorization = request.headers.get("authorization") || "";
+    if (!TELEGRAM_CHAT_ID) {
+      return NextResponse.json(
+        {
+          error:
+            "Telegram channel ID is missing. Configure TELEGRAM_CHANNEL_ID or YOUR_CHANNEL_ID in Vercel.",
+        },
+        { status: 500 },
+      );
+    }
+
+    // --------------------------------------------------
+    // Authentication
+    // --------------------------------------------------
+
+    const authorization =
+      request.headers.get("authorization") || "";
 
     if (!authorization.startsWith("Bearer ")) {
       return NextResponse.json(
-        { error: "Authentication required." },
+        {
+          error: "Authentication required.",
+        },
         { status: 401 },
       );
     }
@@ -37,18 +58,17 @@ export async function POST(request: Request) {
 
     if (!token) {
       return NextResponse.json(
-        { error: "Authentication token is missing." },
+        {
+          error: "Authentication token is missing.",
+        },
         { status: 401 },
       );
     }
 
-    /*
-     * Create a Supabase client with the logged-in user's JWT.
-     *
-     * This is required because social_videos RLS uses:
-     *
-     * auth.uid() = user_id
-     */
+    // --------------------------------------------------
+    // Supabase client using user's JWT
+    // --------------------------------------------------
+
     const userSupabase = createClient(
       SUPABASE_URL,
       SUPABASE_PUBLISHABLE_KEY,
@@ -65,65 +85,94 @@ export async function POST(request: Request) {
       },
     );
 
-    // Verify the logged-in user
+    // --------------------------------------------------
+    // Verify user
+    // --------------------------------------------------
+
     const {
       data: { user },
       error: userError,
     } = await userSupabase.auth.getUser();
 
     if (userError || !user) {
-      console.error("Supabase authentication error:", userError);
+      console.error(
+        "Supabase authentication error:",
+        userError,
+      );
 
       return NextResponse.json(
-        { error: "Invalid or expired session. Please login again." },
+        {
+          error:
+            "Invalid or expired session. Please login again.",
+        },
         { status: 401 },
       );
     }
 
-    // Read request body
+    // --------------------------------------------------
+    // Request body
+    // --------------------------------------------------
+
     const body = await request.json();
     const storage = body?.storage;
 
     if (!storage || typeof storage !== "object") {
       return NextResponse.json(
-        { error: "Telegram storage data is required." },
+        {
+          error: "Telegram storage data is required.",
+        },
         { status: 400 },
       );
     }
 
-    // Telegram file ID is required
+    // --------------------------------------------------
+    // Telegram file ID
+    // --------------------------------------------------
+
     if (
       !storage.telegram_file_id ||
       typeof storage.telegram_file_id !== "string"
     ) {
       return NextResponse.json(
-        { error: "Telegram file ID is missing." },
+        {
+          error: "Telegram file ID is missing.",
+        },
         { status: 400 },
       );
     }
 
-    // Clean title
+    // --------------------------------------------------
+    // Title
+    // --------------------------------------------------
+
     const title =
-      typeof body.title === "string" && body.title.trim()
+      typeof body.title === "string" &&
+      body.title.trim()
         ? body.title.trim()
         : null;
 
-    // Clean caption
+    // --------------------------------------------------
+    // Caption
+    // --------------------------------------------------
+
     const caption =
-      typeof body.caption === "string" && body.caption.trim()
+      typeof body.caption === "string" &&
+      body.caption.trim()
         ? body.caption.trim()
         : null;
 
-    /*
-     * IMPORTANT:
-     * user_id comes directly from the verified Supabase session.
-     * Do NOT trust a user_id sent from the browser.
-     */
+    // --------------------------------------------------
+    // Build database row
+    // --------------------------------------------------
+
     const insertData = {
       user_id: user.id,
 
       title,
       caption,
+
+      // Telegram storage information
+      telegram_chat_id: TELEGRAM_CHAT_ID,
 
       telegram_file_id: storage.telegram_file_id,
 
@@ -163,13 +212,22 @@ export async function POST(request: Request) {
           : null,
     };
 
-    console.log("Saving social video metadata:", {
-      user_id: user.id,
-      telegram_file_id: storage.telegram_file_id,
-      original_filename: storage.original_filename,
-    });
+    console.log(
+      "Saving social video metadata:",
+      {
+        user_id: user.id,
+        telegram_chat_id: TELEGRAM_CHAT_ID,
+        telegram_file_id:
+          storage.telegram_file_id,
+        original_filename:
+          storage.original_filename,
+      },
+    );
 
-    // Insert into Supabase
+    // --------------------------------------------------
+    // Insert into social_videos
+    // --------------------------------------------------
+
     const { data, error } = await userSupabase
       .from("social_videos")
       .insert(insertData)
@@ -177,12 +235,15 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
-      console.error("Social video metadata insert error:", {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint,
-      });
+      console.error(
+        "Social video metadata insert error:",
+        {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        },
+      );
 
       return NextResponse.json(
         {
@@ -195,13 +256,21 @@ export async function POST(request: Request) {
       );
     }
 
+    // --------------------------------------------------
+    // Success
+    // --------------------------------------------------
+
     return NextResponse.json({
       success: true,
-      message: "Video metadata saved successfully.",
+      message:
+        "Video metadata saved successfully.",
       video: data,
     });
   } catch (error) {
-    console.error("Social metadata route error:", error);
+    console.error(
+      "Social metadata route error:",
+      error,
+    );
 
     return NextResponse.json(
       {
