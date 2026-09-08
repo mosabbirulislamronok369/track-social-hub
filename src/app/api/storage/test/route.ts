@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { uploadVideoToTelegram } from "../../../../lib/telegramStorage";
-
+import { uploadVideoToTelegram } from "../../../lib/telegramStorage";
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
