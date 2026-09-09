@@ -299,6 +299,15 @@ export default function Social() {
    * ---------------------------------------------------------
    */
 
+  /*
+   * Telegram's Bot API can only *download* files up to 20MB
+   * (uploads can be larger, but getFile silently fails above
+   * this limit), so anything bigger would upload fine and then
+   * never play back. Reject it client-side instead of letting
+   * the user hit a broken video later.
+   */
+  const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+
   function chooseFile(nextFile: File | null) {
     setError("");
     setProgress(0);
@@ -313,6 +322,14 @@ export default function Social() {
     if (!kind) {
       setFile(null);
       setError("Please choose a photo or video file.");
+      return;
+    }
+
+    if (nextFile.size > MAX_UPLOAD_BYTES) {
+      setFile(null);
+      setError(
+        `That file is ${formatBytes(nextFile.size)}, but the limit is 20 MB. Please choose a smaller ${kind === "video" ? "video" : "photo"}.`,
+      );
       return;
     }
 
@@ -1022,6 +1039,10 @@ export default function Social() {
 
                   <p className="mt-1 text-sm text-white/35">
                     or click to browse
+                  </p>
+
+                  <p className="mt-3 text-xs text-white/25">
+                    Max file size: 20 MB
                   </p>
 
                 </div>
