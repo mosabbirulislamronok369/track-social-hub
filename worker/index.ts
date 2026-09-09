@@ -24,7 +24,7 @@ function getCaption(
   file: File,
   caption: FormDataEntryValue | null,
   title: FormDataEntryValue | null,
-): string {
+) {
   if (typeof caption === "string" && caption.trim()) {
     return caption.trim();
   }
@@ -37,8 +37,10 @@ function getCaption(
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    // CORS
+  async fetch(
+    request: Request,
+    env: Env,
+  ): Promise<Response> {
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
@@ -46,7 +48,6 @@ export default {
       });
     }
 
-    // POST only
     if (request.method !== "POST") {
       return json(
         {
@@ -57,7 +58,6 @@ export default {
       );
     }
 
-    // Environment variables
     if (
       !env.TELEGRAM_BOT_TOKEN ||
       !env.TELEGRAM_CHANNEL_ID ||
@@ -72,14 +72,13 @@ export default {
       );
     }
 
-    // Authorization
     const authorization =
       request.headers.get("authorization") || "";
 
-    const expectedAuthorization =
-      `Bearer ${env.UPLOAD_SECRET}`;
-
-    if (authorization !== expectedAuthorization) {
+    if (
+      authorization !==
+      `Bearer ${env.UPLOAD_SECRET}`
+    ) {
       return json(
         {
           success: false,
@@ -98,13 +97,15 @@ export default {
       const caption = incoming.get("caption");
       const title = incoming.get("title");
 
-      // Cannot upload both together
-      if (video instanceof File && photo instanceof File) {
+      if (
+        video instanceof File &&
+        photo instanceof File
+      ) {
         return json(
           {
             success: false,
             error:
-              "Please upload either a photo or a video, not both.",
+              "Please upload either a photo or a video.",
           },
           400,
         );
@@ -159,7 +160,7 @@ export default {
           !telegramData?.ok
         ) {
           console.error(
-            "Telegram sendPhoto error:",
+            "Telegram photo error:",
             telegramData,
           );
 
@@ -175,7 +176,7 @@ export default {
         }
 
         const message =
-          telegramData?.result;
+          telegramData.result;
 
         const photos =
           message?.photo;
@@ -188,14 +189,12 @@ export default {
             {
               success: false,
               error:
-                "Telegram succeeded but returned no photo file_id.",
+                "Telegram returned no photo.",
             },
             502,
           );
         }
 
-        // Telegram returns multiple sizes.
-        // Last one is normally the largest.
         const telegramPhoto =
           photos[photos.length - 1];
 
@@ -204,7 +203,7 @@ export default {
             {
               success: false,
               error:
-                "Telegram returned an invalid photo.",
+                "Telegram returned invalid photo data.",
             },
             502,
           );
@@ -212,7 +211,6 @@ export default {
 
         return json({
           success: true,
-
           message:
             "Photo uploaded to Telegram successfully.",
 
@@ -227,7 +225,7 @@ export default {
               telegramPhoto.file_id,
 
             telegram_message_id:
-              message?.message_id ?? null,
+              message.message_id ?? null,
 
             mime_type:
               photo.type,
@@ -244,8 +242,7 @@ export default {
             height:
               telegramPhoto.height ?? null,
 
-            duration_seconds:
-              null,
+            duration_seconds: null,
           },
         });
       }
@@ -304,7 +301,7 @@ export default {
           !telegramData?.ok
         ) {
           console.error(
-            "Telegram sendVideo error:",
+            "Telegram video error:",
             telegramData,
           );
 
@@ -320,7 +317,7 @@ export default {
         }
 
         const message =
-          telegramData?.result;
+          telegramData.result;
 
         const telegramVideo =
           message?.video;
@@ -330,7 +327,7 @@ export default {
             {
               success: false,
               error:
-                "Telegram succeeded but returned no video file_id.",
+                "Telegram returned no video file_id.",
             },
             502,
           );
@@ -338,7 +335,6 @@ export default {
 
         return json({
           success: true,
-
           message:
             "Video uploaded to Telegram successfully.",
 
@@ -353,7 +349,7 @@ export default {
               telegramVideo.file_id,
 
             telegram_message_id:
-              message?.message_id ?? null,
+              message.message_id ?? null,
 
             mime_type:
               video.type,
@@ -376,7 +372,6 @@ export default {
         });
       }
 
-      // No file
       return json(
         {
           success: false,
