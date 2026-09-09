@@ -63,6 +63,50 @@ function formatBytes(bytes: number | null) {
   return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+/*
+ * Some browsers/OS combinations (screenshots, certain
+ * drag-and-drop or clipboard sources) leave `file.type`
+ * empty, which previously caused photos to be misclassified
+ * as videos. Fall back to the file extension when the MIME
+ * type is missing or ambiguous.
+ */
+const PHOTO_EXTENSIONS = [
+  "heic",
+  "heif",
+  "jpg",
+  "jpeg",
+  "png",
+  "webp",
+  "gif",
+  "avif",
+  "bmp",
+];
+
+const VIDEO_EXTENSIONS = [
+  "mp4",
+  "mov",
+  "webm",
+  "mkv",
+  "avi",
+  "m4v",
+  "3gp",
+];
+
+function detectMediaKind(
+  file: File,
+): "photo" | "video" | null {
+  if (file.type.startsWith("image/")) return "photo";
+  if (file.type.startsWith("video/")) return "video";
+
+  const ext =
+    file.name.split(".").pop()?.toLowerCase() ?? "";
+
+  if (PHOTO_EXTENSIONS.includes(ext)) return "photo";
+  if (VIDEO_EXTENSIONS.includes(ext)) return "video";
+
+  return null;
+}
+
 function timeAgo(value: string) {
   const diff = Math.max(0, Date.now() - new Date(value).getTime());
   const minutes = Math.floor(diff / 60000);
@@ -84,6 +128,9 @@ function timeAgo(value: string) {
 export default function Social() {
   const inputRef = useRef<HTMLInputElement>(null);
   const reelsContainerRef = useRef<HTMLDivElement>(null);
+  const reelVideoRefs = useRef<Map<number, HTMLVideoElement>>(
+    new Map(),
+  );
 
   const [videos, setVideos] = useState<SocialVideo[]>([]);
   const [photos, setPhotos] = useState<SocialPhoto[]>([]);
@@ -261,10 +308,9 @@ export default function Social() {
       return;
     }
 
-    const isVideo = nextFile.type.startsWith("video/");
-    const isPhoto = nextFile.type.startsWith("image/");
+    const kind = detectMediaKind(nextFile);
 
-    if (!isVideo && !isPhoto) {
+    if (!kind) {
       setFile(null);
       setError("Please choose a photo or video file.");
       return;
@@ -324,7 +370,7 @@ export default function Social() {
         );
       }
 
-      const isPhoto = file.type.startsWith("image/");
+      const isPhoto = detectMediaKind(file) === "photo";
 
       const formData = new FormData();
 
@@ -618,6 +664,34 @@ export default function Social() {
     return () => observer.disconnect();
   }, [reelsOpen, videos.length]);
 
+  /*
+   * Only the active reel should ever be playing. Without this,
+   * scrolling to the next reel leaves the previous video's
+   * audio/playback running underneath the new one.
+   */
+  useEffect(() => {
+    if (!reelsOpen) return;
+
+    reelVideoRefs.current.forEach((videoEl, index) => {
+      if (index === activeReelIndex) {
+        videoEl.play().catch(() => {
+          /* Autoplay can be rejected by the browser; ignore. */
+        });
+      } else {
+        videoEl.pause();
+        videoEl.currentTime = 0;
+      }
+    });
+  }, [reelsOpen, activeReelIndex]);
+
+  useEffect(() => {
+    if (reelsOpen) return;
+
+    reelVideoRefs.current.forEach((videoEl) => {
+      videoEl.pause();
+    });
+  }, [reelsOpen]);
+
   useEffect(() => {
     return () => {
       document.body.style.overflow = "";
@@ -850,9 +924,12 @@ export default function Social() {
   const selectedMeta = useMemo(() => {
     if (!file) return null;
 
+    const typeSuffix = file.type.split("/").pop();
+    const ext = file.name.split(".").pop()?.toLowerCase();
+
     return {
       size: formatBytes(file.size),
-      kind: file.type.split("/").pop() ?? "file",
+      kind: typeSuffix || ext || "file",
     };
   }, [file]);
 
@@ -959,7 +1036,7 @@ export default function Social() {
 
                     <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black">
 
-                      {file.type.startsWith("video/") ? (
+                      {detectMediaKind(file) === "video" ? (
                         <video
                           src={URL.createObjectURL(file)}
                           className="h-full w-full object-cover"
@@ -1589,13 +1666,19 @@ export default function Social() {
 
                   {streamUrl ? (
                     <video
+                      ref={(el) => {
+                        if (el) {
+                          reelVideoRefs.current.set(index, el);
+                        } else {
+                          reelVideoRefs.current.delete(index);
+                        }
+                      }}
                       src={streamUrl}
                       className="h-full w-full object-contain"
                       controls
                       playsInline
                       preload={index === activeReelIndex ? "auto" : "metadata"}
                       muted={false}
-                      autoPlay={index === activeReelIndex}
                       loop
                     />
                   ) : (
