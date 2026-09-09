@@ -4,22 +4,15 @@ import { createClient } from "@supabase/supabase-js";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const SUPABASE_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-const SUPABASE_PUBLISHABLE_KEY =
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 export async function POST(request: Request) {
   try {
-    if (
-      !SUPABASE_URL ||
-      !SUPABASE_PUBLISHABLE_KEY
-    ) {
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
       return NextResponse.json(
         {
-          error:
-            "Supabase environment variables are missing.",
+          error: "Supabase environment variables are missing.",
         },
         { status: 500 },
       );
@@ -28,37 +21,26 @@ export async function POST(request: Request) {
     const authorization =
       request.headers.get("authorization") || "";
 
-    if (!authorization.startsWith("Bearer ")) {
-      return NextResponse.json(
-        {
-          error:
-            "Authentication required.",
-        },
-        { status: 401 },
-      );
-    }
-
-    const token =
-      authorization.slice(7).trim();
+    const token = authorization.startsWith("Bearer ")
+      ? authorization.slice(7)
+      : null;
 
     if (!token) {
       return NextResponse.json(
         {
-          error:
-            "Authentication token is missing.",
+          error: "Authentication required.",
         },
         { status: 401 },
       );
     }
 
-    const supabase = createClient(
+    // IMPORTANT:
+    // Use the logged-in user's JWT so Supabase RLS
+    // can evaluate auth.uid().
+    const userSupabase = createClient(
       SUPABASE_URL,
-      SUPABASE_PUBLISHABLE_KEY,
+      SUPABASE_KEY,
       {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
         global: {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -70,13 +52,12 @@ export async function POST(request: Request) {
     const {
       data: { user },
       error: userError,
-    } = await supabase.auth.getUser();
+    } = await userSupabase.auth.getUser(token);
 
     if (userError || !user) {
       return NextResponse.json(
         {
-          error:
-            "Invalid or expired session.",
+          error: "Invalid session.",
         },
         { status: 401 },
       );
@@ -89,92 +70,55 @@ export async function POST(request: Request) {
     if (!storage?.telegram_file_id) {
       return NextResponse.json(
         {
-          error:
-            "Telegram photo storage data is required.",
+          error: "Telegram storage data is required.",
         },
         { status: 400 },
       );
     }
 
-    const telegramChatId =
-      typeof storage.telegram_chat_id ===
-      "string"
-        ? storage.telegram_chat_id
-        : process.env.TELEGRAM_STORAGE_CHAT_ID;
+    const { data, error } = await userSupabase
+      .from("social_photos")
+      .insert({
+        user_id: user.id,
 
-    if (!telegramChatId) {
-      return NextResponse.json(
-        {
-          error:
-            "Telegram storage chat ID is missing.",
-        },
-        { status: 500 },
-      );
-    }
+        title:
+          typeof body.title === "string"
+            ? body.title
+            : null,
 
-    const title =
-      typeof body.title === "string" &&
-      body.title.trim()
-        ? body.title.trim()
-        : null;
+        caption:
+          typeof body.caption === "string"
+            ? body.caption
+            : null,
 
-    const caption =
-      typeof body.caption === "string" &&
-      body.caption.trim()
-        ? body.caption.trim()
-        : null;
+        telegram_chat_id:
+          storage.telegram_chat_id ??
+          process.env.TELEGRAM_STORAGE_CHAT_ID ??
+          null,
 
-    const insertData = {
-      user_id: user.id,
+        telegram_file_id:
+          storage.telegram_file_id,
 
-      title,
-      caption,
+        telegram_message_id:
+          storage.telegram_message_id ?? null,
 
-      telegram_chat_id:
-        telegramChatId,
+        mime_type:
+          storage.mime_type ?? null,
 
-      telegram_file_id:
-        storage.telegram_file_id,
+        original_filename:
+          storage.original_filename ?? null,
 
-      telegram_message_id:
-        typeof storage.telegram_message_id ===
-        "number"
-          ? storage.telegram_message_id
-          : null,
+        file_size:
+          storage.file_size ?? null,
 
-      mime_type:
-        typeof storage.mime_type === "string"
-          ? storage.mime_type
-          : null,
+        width:
+          storage.width ?? null,
 
-      original_filename:
-        typeof storage.original_filename ===
-        "string"
-          ? storage.original_filename
-          : null,
-
-      file_size:
-        typeof storage.file_size === "number"
-          ? storage.file_size
-          : null,
-
-      width:
-        typeof storage.width === "number"
-          ? storage.width
-          : null,
-
-      height:
-        typeof storage.height === "number"
-          ? storage.height
-          : null,
-    };
-
-    const { data, error } =
-      await supabase
-        .from("social_photos")
-        .insert(insertData)
-        .select("*")
-        .single();
+        height:
+          storage.height ?? null,
+      })
+      .select("*")
+      .single();
 
     if (error) {
       console.error(
@@ -185,7 +129,6 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error: error.message,
-          code: error.code ?? null,
           details: error.details ?? null,
           hint: error.hint ?? null,
         },
@@ -195,8 +138,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message:
-        "Photo metadata saved successfully.",
       photo: data,
     });
   } catch (error) {
