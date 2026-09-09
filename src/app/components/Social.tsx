@@ -850,10 +850,10 @@ export default function Social() {
   const selectedMeta = useMemo(() => {
     if (!file) return null;
 
-    return `${formatBytes(file.size)} · ${file.type
-      .split("/")
-      .pop()
-      ?.toUpperCase()}`;
+    return {
+      size: formatBytes(file.size),
+      kind: file.type.split("/").pop() ?? "file",
+    };
   }, [file]);
 
   /*
@@ -868,28 +868,28 @@ export default function Social() {
 
         {/* HERO */}
 
-        <div className="relative overflow-hidden rounded-[30px] border border-white/[0.08] bg-white/[0.025] shadow-[0_30px_100px_-40px_rgba(124,58,237,0.45)]">
+        <div className="relative overflow-hidden rounded-[28px] border border-white/[0.07] bg-[#0c0c0f]">
 
-          <div className="absolute -right-28 -top-32 h-72 w-72 rounded-full bg-[var(--accent)]/15 blur-3xl" />
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.35]"
+            style={{
+              backgroundImage:
+                "repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 46px)",
+            }}
+          />
 
-          <div className="absolute -left-32 top-24 h-64 w-64 rounded-full bg-[var(--accent-2)]/10 blur-3xl" />
-
-          <div className="relative p-5 sm:p-7 lg:p-9">
+          <div className="relative border-b border-white/[0.06] p-5 sm:p-7 lg:p-9">
 
             <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
 
-              <div>
-                <p className="eyebrow mb-2">
-                  YOUR SOCIAL SPACE
-                </p>
-
-                <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl">
+              <div className="max-w-xl">
+                <h1 className="font-serif text-4xl italic leading-none text-white sm:text-5xl">
                   Social
                 </h1>
 
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-white/45 sm:text-base">
-                  Share moments, clips and memories with a fast,
-                  focused social feed.
+                <p className="mt-3 text-sm leading-6 text-white/45 sm:text-base">
+                  A running reel of what you&rsquo;re watching &mdash;
+                  clips and stills, kept in one feed.
                 </p>
               </div>
 
@@ -898,13 +898,13 @@ export default function Social() {
                 onClick={() =>
                   inputRef.current?.click()
                 }
-                className="group inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,var(--accent),var(--accent-2))] px-5 text-sm font-bold text-white shadow-[0_12px_30px_-12px_var(--accent-soft)] transition duration-300 hover:-translate-y-0.5"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-white/15 bg-white px-5 text-sm font-semibold text-black transition hover:bg-white/90"
               >
-                <span className="text-lg leading-none">
+                <span className="text-base leading-none">
                   +
                 </span>
 
-                Create post
+                New post
               </button>
             </div>
 
@@ -922,10 +922,10 @@ export default function Social() {
               onClick={() =>
                 inputRef.current?.click()
               }
-              className={`mt-7 cursor-pointer rounded-2xl border border-dashed p-5 transition-all duration-300 sm:p-7 ${
+              className={`mt-7 cursor-pointer rounded-2xl border border-dashed p-5 transition-colors duration-200 sm:p-7 ${
                 dragging
-                  ? "border-[var(--accent)] bg-[var(--accent-soft)]"
-                  : "border-white/[0.11] bg-black/20 hover:border-white/[0.2] hover:bg-white/[0.035]"
+                  ? "border-white/40 bg-white/[0.04]"
+                  : "border-white/[0.11] bg-black/20 hover:border-white/[0.2]"
               }`}
             >
               <input
@@ -937,22 +937,14 @@ export default function Social() {
               />
 
               {!file ? (
-                <div className="flex flex-col items-center justify-center py-7 text-center">
+                <div className="flex flex-col items-center justify-center py-9 text-center">
 
-                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.045] text-2xl">
-                    ◈
-                  </div>
-
-                  <h2 className="text-base font-bold text-white">
+                  <h2 className="text-base font-semibold text-white">
                     Drop a photo or video here
                   </h2>
 
                   <p className="mt-1 text-sm text-white/35">
                     or click to browse
-                  </p>
-
-                  <p className="mt-3 text-xs text-white/25">
-                    Direct Telegram upload via Cloudflare Worker
                   </p>
 
                 </div>
@@ -986,19 +978,24 @@ export default function Social() {
 
                     <div className="min-w-0 flex-1">
 
-                      <p className="truncate text-sm font-bold text-white">
+                      <p className="truncate text-sm font-semibold text-white">
                         {file.name}
                       </p>
 
-                      <p className="mt-1 text-xs text-white/35">
-                        {selectedMeta}
-                      </p>
+                      {selectedMeta && (
+                        <div className="mt-1 flex items-center gap-2 text-xs text-white/35">
+                          <span>{selectedMeta.size}</span>
+                          <span className="rounded border border-white/10 px-1.5 py-0.5 text-[10px] text-white/40">
+                            {selectedMeta.kind}
+                          </span>
+                        </div>
+                      )}
 
                       {uploading && (
-                        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/[0.07]">
+                        <div className="mt-4 h-1 overflow-hidden rounded-full bg-white/[0.07]">
 
                           <div
-                            className="h-full rounded-full bg-[linear-gradient(90deg,var(--accent),var(--accent-2))] transition-all duration-300"
+                            className="h-full rounded-full bg-white transition-all duration-300"
                             style={{
                               width: `${progress}%`,
                             }}
@@ -1070,31 +1067,25 @@ export default function Social() {
 
         <div className="mt-9 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
 
-          <div>
-            <p className="eyebrow">
-              LATEST
-            </p>
-
-            <h2 className="mt-1 text-xl font-bold text-white sm:text-2xl">
-              Your social feed
-            </h2>
-          </div>
+          <h2 className="font-serif text-2xl italic text-white sm:text-3xl">
+            Feed
+          </h2>
 
           {/* TABS */}
 
-          <div className="inline-flex w-fit rounded-xl border border-white/[0.07] bg-white/[0.025] p-1">
+          <div className="inline-flex w-fit gap-6 border-b border-white/[0.08]">
 
             <button
               type="button"
               onClick={() => setActiveTab("videos")}
-              className={`rounded-lg px-4 py-2 text-xs font-bold transition ${
+              className={`border-b-2 pb-2 text-sm font-semibold transition ${
                 activeTab === "videos"
-                  ? "bg-white text-black shadow-lg"
-                  : "text-white/40 hover:text-white"
+                  ? "border-white text-white"
+                  : "border-transparent text-white/35 hover:text-white/70"
               }`}
             >
               Videos{" "}
-              <span className="ml-1 opacity-60">
+              <span className="ml-1 text-xs font-normal opacity-50">
                 {videos.length}
               </span>
             </button>
@@ -1102,14 +1093,14 @@ export default function Social() {
             <button
               type="button"
               onClick={() => setActiveTab("photos")}
-              className={`rounded-lg px-4 py-2 text-xs font-bold transition ${
+              className={`border-b-2 pb-2 text-sm font-semibold transition ${
                 activeTab === "photos"
-                  ? "bg-white text-black shadow-lg"
-                  : "text-white/40 hover:text-white"
+                  ? "border-white text-white"
+                  : "border-transparent text-white/35 hover:text-white/70"
               }`}
             >
               Photos{" "}
-              <span className="ml-1 opacity-60">
+              <span className="ml-1 text-xs font-normal opacity-50">
                 {photos.length}
               </span>
             </button>
@@ -1126,7 +1117,7 @@ export default function Social() {
               (_, index) => (
                 <div
                   key={index}
-                  className="overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.025]"
+                  className="overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0c0c10]"
                 >
                   <div className="aspect-video animate-pulse bg-white/[0.04]" />
 
@@ -1147,18 +1138,14 @@ export default function Social() {
              ================================================= */
 
           videos.length === 0 ? (
-            <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.025] px-6 py-16 text-center">
+            <div className="mt-5 rounded-2xl border border-dashed border-white/[0.1] px-6 py-16 text-center">
 
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.04] text-xl">
-                ✦
-              </div>
-
-              <h3 className="mt-4 text-lg font-bold text-white">
+              <h3 className="font-serif text-xl italic text-white">
                 No videos yet
               </h3>
 
               <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-white/35">
-                Upload your first video and it will appear here.
+                Upload your first video and it will show up here.
               </p>
 
             </div>
@@ -1180,10 +1167,14 @@ export default function Social() {
                 const cardComments =
                   comments[video.id] ?? [];
 
+                const isFeatured = index === 0;
+
                 return (
                   <article
                     key={video.id}
-                    className="group overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0b0b12]/85 shadow-[0_20px_70px_-45px_rgba(0,0,0,0.9)] transition duration-300 hover:-translate-y-1 hover:border-white/[0.13]"
+                    className={`group overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0c0c10] transition-colors duration-200 hover:border-white/[0.16] ${
+                      isFeatured ? "lg:col-span-2" : ""
+                    }`}
                   >
 
                     {/* VIDEO */}
@@ -1193,7 +1184,9 @@ export default function Social() {
                       onClick={() =>
                         openReels(index)
                       }
-                      className="relative block aspect-video w-full overflow-hidden bg-black text-left"
+                      className={`relative block w-full overflow-hidden bg-black text-left ${
+                        isFeatured ? "aspect-[21/9]" : "aspect-video"
+                      }`}
                     >
                       {streamUrl ? (
                         <video
@@ -1211,10 +1204,6 @@ export default function Social() {
 
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/10 opacity-70" />
 
-                      <div className="absolute left-4 top-4 rounded-full border border-white/10 bg-black/45 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-white/80 backdrop-blur-xl">
-                        Tap to watch
-                      </div>
-
                       <div className="absolute bottom-4 left-4 flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-xl">
                         ▶
                       </div>
@@ -1227,7 +1216,7 @@ export default function Social() {
 
                       <div className="flex items-start gap-3">
 
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,var(--accent-soft),rgba(255,255,255,.08))] text-sm font-black text-[var(--accent-2)]">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-sm font-semibold text-white/70">
                           U
                         </div>
 
@@ -1235,7 +1224,7 @@ export default function Social() {
 
                           <div className="flex items-center justify-between gap-3">
 
-                            <p className="truncate text-sm font-bold text-white">
+                            <p className="truncate font-serif text-base italic text-white">
                               {video.title ||
                                 video.original_filename ||
                                 "Untitled post"}
@@ -1260,10 +1249,10 @@ export default function Social() {
                               onClick={() =>
                                 toggleLike(video.id)
                               }
-                              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition ${
+                              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
                                 isLiked
-                                  ? "bg-[var(--accent-soft)] text-[var(--accent-2)]"
-                                  : "text-white/40 hover:bg-white/[0.05] hover:text-white"
+                                  ? "text-[var(--accent-2)]"
+                                  : "text-white/40 hover:text-white"
                               }`}
                             >
                               {isLiked ? "♥" : "♡"}
@@ -1280,7 +1269,7 @@ export default function Social() {
                                   video.id,
                                 )
                               }
-                              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold text-white/40 transition hover:bg-white/[0.05] hover:text-white"
+                              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-white/40 transition hover:text-white"
                             >
                               ◌{" "}
                               {commentCounts[
@@ -1295,7 +1284,7 @@ export default function Social() {
                                   video.id,
                                 )
                               }
-                              className="ml-auto rounded-lg px-3 py-2 text-xs font-bold text-white/40 transition hover:bg-white/[0.05] hover:text-white"
+                              className="ml-auto rounded-lg px-3 py-2 text-xs font-semibold text-white/40 transition hover:text-white"
                             >
                               Share
                             </button>
@@ -1324,7 +1313,7 @@ export default function Social() {
                                       >
                                         <div className="flex items-center justify-between gap-3">
 
-                                          <span className="text-[11px] font-bold text-white/55">
+                                          <span className="text-[11px] font-semibold text-white/55">
                                             {comment.user_id ===
                                             currentUserId
                                               ? "You"
@@ -1414,8 +1403,8 @@ export default function Social() {
                                 </span>
                               )}
 
-                            <span className="ml-auto text-emerald-300/70">
-                              Telegram storage
+                            <span className="ml-auto text-white/25">
+                              Stored on Telegram
                             </span>
 
                           </div>
@@ -1437,18 +1426,14 @@ export default function Social() {
              ================================================= */
 
           photos.length === 0 ? (
-            <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.025] px-6 py-16 text-center">
+            <div className="mt-5 rounded-2xl border border-dashed border-white/[0.1] px-6 py-16 text-center">
 
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.04] text-xl">
-                ✦
-              </div>
-
-              <h3 className="mt-4 text-lg font-bold text-white">
+              <h3 className="font-serif text-xl italic text-white">
                 No photos yet
               </h3>
 
               <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-white/35">
-                Upload your first photo and it will appear here.
+                Upload your first photo and it will show up here.
               </p>
 
             </div>
@@ -1467,7 +1452,7 @@ export default function Social() {
                 return (
                   <article
                     key={photo.id}
-                    className="group overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0b0b12]/85 shadow-[0_20px_70px_-45px_rgba(0,0,0,0.9)] transition duration-300 hover:-translate-y-1 hover:border-white/[0.13]"
+                    className="group overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0c0c10] transition-colors duration-200 hover:border-white/[0.16]"
                   >
 
                     <div className="relative aspect-[4/5] overflow-hidden bg-black">
@@ -1491,7 +1476,7 @@ export default function Social() {
 
                       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent p-5 pt-20">
 
-                        <p className="truncate text-sm font-bold text-white">
+                        <p className="truncate font-serif text-base italic text-white">
                           {photo.title ||
                             photo.original_filename ||
                             "Untitled photo"}
@@ -1519,7 +1504,7 @@ export default function Social() {
                               </span>
                             )}
 
-                          <span className="ml-auto text-emerald-300/70">
+                          <span className="ml-auto text-white/40">
                             Telegram
                           </span>
 
@@ -1550,12 +1535,14 @@ export default function Social() {
 
             <div className="pointer-events-auto">
 
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
-                SOCIAL REELS
+              <p className="font-serif text-lg italic text-white/90">
+                {videos[activeReelIndex]?.title ||
+                  videos[activeReelIndex]?.original_filename ||
+                  "Untitled post"}
               </p>
 
-              <p className="mt-1 text-sm font-semibold text-white/80">
-                {activeReelIndex + 1} / {videos.length}
+              <p className="mt-0.5 text-xs text-white/40">
+                {activeReelIndex + 1} of {videos.length}
               </p>
 
             </div>
@@ -1625,28 +1612,12 @@ export default function Social() {
 
                   <div className="absolute bottom-8 left-4 right-20 z-10 max-w-xl sm:bottom-10 sm:left-[calc(50%-350px)]">
 
-                    <div className="flex items-center gap-3">
-
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/10 text-sm font-black text-white backdrop-blur-xl">
-                        U
-                      </div>
-
-                      <div>
-                        <p className="text-sm font-bold text-white">
-                          {video.title ||
-                            video.original_filename ||
-                            "Untitled"}
-                        </p>
-
-                        <p className="text-[11px] text-white/45">
-                          {timeAgo(video.created_at)}
-                        </p>
-                      </div>
-
-                    </div>
+                    <p className="text-[11px] text-white/45">
+                      {timeAgo(video.created_at)}
+                    </p>
 
                     {video.caption && (
-                      <p className="mt-4 line-clamp-4 text-sm leading-6 text-white/80 drop-shadow-lg">
+                      <p className="mt-2 line-clamp-4 text-sm leading-6 text-white/80 drop-shadow-lg">
                         {video.caption}
                       </p>
                     )}
@@ -1752,8 +1723,8 @@ export default function Social() {
 
           {activeReelIndex === 0 &&
             videos.length > 1 && (
-              <div className="pointer-events-none absolute bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-white/45 backdrop-blur-xl sm:hidden">
-                Swipe up for next
+              <div className="pointer-events-none absolute bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-xs font-medium text-white/50 backdrop-blur-xl sm:hidden">
+                Swipe up for the next one
               </div>
             )}
 
