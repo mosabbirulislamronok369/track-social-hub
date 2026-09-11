@@ -51,6 +51,27 @@ type CommentRow = {
   created_at: string;
 };
 
+type AuthorInfo = {
+  display_name: string | null;
+  name: string | null;
+  avatar_url: string | null;
+  avatar_telegram_file_id: string | null;
+};
+
+function authorAvatarSrc(info: AuthorInfo | undefined) {
+  if (!info) return null;
+  if (info.avatar_telegram_file_id) {
+    return `/api/social/photos/stream?fileId=${encodeURIComponent(
+      info.avatar_telegram_file_id,
+    )}`;
+  }
+  return info.avatar_url;
+}
+
+function authorDisplayName(info: AuthorInfo | undefined) {
+  return info?.display_name || info?.name || "Unnamed user";
+}
+
 function formatBytes(bytes: number | null) {
   if (!bytes) return "0 B";
 
@@ -164,6 +185,8 @@ export default function Social({
     {},
   );
 
+  const [authors, setAuthors] = useState<Record<string, AuthorInfo>>({});
+
   const [openComments, setOpenComments] = useState<string | null>(null);
   const [comments, setComments] = useState<Record<string, CommentRow[]>>({});
   const [commentDraft, setCommentDraft] = useState("");
@@ -215,6 +238,55 @@ export default function Social({
 
     setLoading(false);
   }, []);
+
+  /*
+   * ---------------------------------------------------------
+   * AUTHORS (name + avatar for every post, so the feed shows
+   * who posted it and it's visibly clickable — before this,
+   * every card just showed an unlabeled "U" circle with no
+   * way to tell it opened a profile).
+   * ---------------------------------------------------------
+   */
+
+  const loadAuthors = useCallback(
+    async (items: { user_id: string }[]) => {
+      const ids = Array.from(
+        new Set(items.map((item) => item.user_id).filter(Boolean)),
+      );
+
+      if (!ids.length) return;
+
+      const { data, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id,name,display_name,avatar_url,avatar_telegram_file_id")
+        .in("id", ids);
+
+      if (profilesError) {
+        console.error("Social authors fetch error:", profilesError);
+        return;
+      }
+
+      setAuthors((prev) => {
+        const next = { ...prev };
+        for (const row of data ?? []) {
+          next[row.id] = {
+            display_name: row.display_name,
+            name: row.name,
+            avatar_url: row.avatar_url,
+            avatar_telegram_file_id: row.avatar_telegram_file_id,
+          };
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (videos.length || photos.length) {
+      loadAuthors([...videos, ...photos]);
+    }
+  }, [videos, photos, loadAuthors]);
 
   /*
    * ---------------------------------------------------------
@@ -1323,20 +1395,44 @@ export default function Social({
                           onClick={() =>
                             onViewProfile?.(video.user_id)
                           }
-                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-sm font-semibold text-white/70 transition hover:border-white/25"
+                          title={`View ${authorDisplayName(authors[video.user_id])}'s profile`}
+                          className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/[0.05] text-sm font-semibold text-white/70 transition hover:border-white/40"
                         >
-                          U
+                          {authorAvatarSrc(authors[video.user_id]) ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={authorAvatarSrc(authors[video.user_id]) as string}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            authorDisplayName(authors[video.user_id])
+                              .charAt(0)
+                              .toUpperCase()
+                          )}
                         </button>
 
                         <div className="min-w-0 flex-1">
 
                           <div className="flex items-center justify-between gap-3">
 
-                            <p className="truncate font-serif text-base italic text-white">
-                              {video.title ||
-                                video.original_filename ||
-                                "Untitled post"}
-                            </p>
+                            <div className="min-w-0">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onViewProfile?.(video.user_id)
+                                }
+                                className="cursor-pointer truncate text-xs font-semibold text-white/50 transition hover:text-white hover:underline"
+                              >
+                                {authorDisplayName(authors[video.user_id])}
+                              </button>
+
+                              <p className="truncate font-serif text-base italic text-white">
+                                {video.title ||
+                                  video.original_filename ||
+                                  "Untitled post"}
+                              </p>
+                            </div>
 
                             <span className="shrink-0 text-[11px] text-white/25">
                               {timeAgo(video.created_at)}
@@ -1588,9 +1684,27 @@ export default function Social({
                           onClick={() =>
                             onViewProfile?.(photo.user_id)
                           }
-                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-black/45 text-xs font-semibold text-white backdrop-blur-xl transition hover:border-white/35"
+                          title={`View ${authorDisplayName(authors[photo.user_id])}'s profile`}
+                          className="flex cursor-pointer items-center gap-2 rounded-full border border-white/15 bg-black/45 py-1 pl-1 pr-3 backdrop-blur-xl transition hover:border-white/40"
                         >
-                          U
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/10 text-[11px] font-semibold text-white">
+                            {authorAvatarSrc(authors[photo.user_id]) ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={authorAvatarSrc(authors[photo.user_id]) as string}
+                                alt=""
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              authorDisplayName(authors[photo.user_id])
+                                .charAt(0)
+                                .toUpperCase()
+                            )}
+                          </span>
+
+                          <span className="max-w-[9rem] truncate text-xs font-semibold text-white">
+                            {authorDisplayName(authors[photo.user_id])}
+                          </span>
                         </button>
                       </div>
 
@@ -1662,12 +1776,40 @@ export default function Social({
                   closeReels();
                   if (authorId) onViewProfile?.(authorId);
                 }}
-                className="text-left font-serif text-lg italic text-white/90 transition hover:text-white"
+                title="View profile"
+                className="flex cursor-pointer items-center gap-2 text-left text-sm font-semibold text-white/80 transition hover:text-white hover:underline"
               >
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 text-[11px] font-bold text-white">
+                  {authorAvatarSrc(authors[videos[activeReelIndex]?.user_id ?? ""]) ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={
+                        authorAvatarSrc(
+                          authors[videos[activeReelIndex]?.user_id ?? ""],
+                        ) as string
+                      }
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    authorDisplayName(
+                      authors[videos[activeReelIndex]?.user_id ?? ""],
+                    )
+                      .charAt(0)
+                      .toUpperCase()
+                  )}
+                </span>
+
+                {authorDisplayName(
+                  authors[videos[activeReelIndex]?.user_id ?? ""],
+                )}
+              </button>
+
+              <p className="mt-1 truncate font-serif text-base italic text-white/90">
                 {videos[activeReelIndex]?.title ||
                   videos[activeReelIndex]?.original_filename ||
                   "Untitled post"}
-              </button>
+              </p>
 
               <p className="mt-0.5 text-xs text-white/40">
                 {activeReelIndex + 1} of {videos.length}
