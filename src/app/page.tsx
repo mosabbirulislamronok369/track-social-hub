@@ -19,6 +19,7 @@ import IslamicTrack from "./components/IslamicTrack";
 import EventCountdown from "./components/EventCountdown";
 import FavouriteList from "./components/FavouriteList";
 import Social from "./components/Social";
+import SocialProfile from "./components/SocialProfile";
 
 type ImportSource = "mal" | "tmdb" | "imdb";
 
@@ -35,6 +36,15 @@ export default function Home() {
     useState<SidebarSection>("dashboard");
   const [importTab, setImportTab] = useState<ImportSource>("mal");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [socialProfileUserId, setSocialProfileUserId] = useState<
+    string | null
+  >(null);
+
+  useEffect(() => {
+    if (activeSection !== "social") {
+      setSocialProfileUserId(null);
+    }
+  }, [activeSection]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -143,7 +153,18 @@ export default function Home() {
 
         {activeSection === "profile" && <Profile />}
 
-        {activeSection === "social" && <Social />}
+        {activeSection === "social" &&
+          (socialProfileUserId ? (
+            <SocialProfile
+              userId={socialProfileUserId}
+              onBack={() => setSocialProfileUserId(null)}
+              onViewProfile={(id) => setSocialProfileUserId(id)}
+            />
+          ) : (
+            <Social
+              onViewProfile={(id) => setSocialProfileUserId(id)}
+            />
+          ))}
 
         {activeSection === "import" && (
           <div className="mx-auto w-full max-w-6xl px-4 py-10">

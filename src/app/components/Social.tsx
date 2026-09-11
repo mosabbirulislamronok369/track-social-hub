@@ -125,7 +125,11 @@ function timeAgo(value: string) {
   return new Date(value).toLocaleDateString();
 }
 
-export default function Social() {
+export default function Social({
+  onViewProfile,
+}: {
+  onViewProfile?: (userId: string) => void;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const reelsContainerRef = useRef<HTMLDivElement>(null);
   const reelVideoRefs = useRef<Map<number, HTMLVideoElement>>(
@@ -1291,7 +1295,7 @@ export default function Social() {
                           src={streamUrl}
                           className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.025]"
                           playsInline
-                          preload="none"
+                          preload="metadata"
                           muted
                         />
                       ) : (
@@ -1314,9 +1318,15 @@ export default function Social() {
 
                       <div className="flex items-start gap-3">
 
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-sm font-semibold text-white/70">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onViewProfile?.(video.user_id)
+                          }
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-sm font-semibold text-white/70 transition hover:border-white/25"
+                        >
                           U
-                        </div>
+                        </button>
 
                         <div className="min-w-0 flex-1">
 
@@ -1572,6 +1582,18 @@ export default function Social() {
                         </div>
                       )}
 
+                      <div className="absolute left-3 top-3">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onViewProfile?.(photo.user_id)
+                          }
+                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-black/45 text-xs font-semibold text-white backdrop-blur-xl transition hover:border-white/35"
+                        >
+                          U
+                        </button>
+                      </div>
+
                       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent p-5 pt-20">
 
                         <p className="truncate font-serif text-base italic text-white">
@@ -1633,11 +1655,19 @@ export default function Social() {
 
             <div className="pointer-events-auto">
 
-              <p className="font-serif text-lg italic text-white/90">
+              <button
+                type="button"
+                onClick={() => {
+                  const authorId = videos[activeReelIndex]?.user_id;
+                  closeReels();
+                  if (authorId) onViewProfile?.(authorId);
+                }}
+                className="text-left font-serif text-lg italic text-white/90 transition hover:text-white"
+              >
                 {videos[activeReelIndex]?.title ||
                   videos[activeReelIndex]?.original_filename ||
                   "Untitled post"}
-              </p>
+              </button>
 
               <p className="mt-0.5 text-xs text-white/40">
                 {activeReelIndex + 1} of {videos.length}
@@ -1708,7 +1738,7 @@ export default function Social() {
                       className="h-full w-full object-contain"
                       controls
                       playsInline
-                      preload={index === activeReelIndex ? "auto" : "none"}
+                      preload={index === activeReelIndex ? "auto" : "metadata"}
                       muted={false}
                       loop
                     />
