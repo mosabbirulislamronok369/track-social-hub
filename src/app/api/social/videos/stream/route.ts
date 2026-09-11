@@ -30,12 +30,30 @@ export async function GET(request: Request) {
       );
     }
 
+    /*
+     * Forward the client's Range header so the browser can seek/scrub
+     * and doesn't have to re-download the whole file on every request.
+     * Without this, playback on mobile is much heavier than it needs
+     * to be and can stall or hang the page.
+     */
+    const range = request.headers.get("range");
+
     const fileResponse = await fetch(
       `https://api.telegram.org/file/bot${token}/${telegramData.result.file_path}`,
-      { cache: "no-store" },
+      {
+        cache: "no-store",
+        headers: range ? { range } : undefined,
+      },
     );
 
-    if (!fileResponse.ok || !fileResponse.body) {
+    if (!fileResponse.ok && fileResponse.status !== 206) {
+      return NextResponse.json(
+        { error: "Telegram video download failed." },
+        { status: 502 },
+      );
+    }
+
+    if (!fileResponse.body) {
       return NextResponse.json(
         { error: "Telegram video download failed." },
         { status: 502 },
@@ -43,18 +61,26 @@ export async function GET(request: Request) {
     }
 
     const headers = new Headers();
+
     headers.set(
       "Content-Type",
       fileResponse.headers.get("content-type") || "video/mp4",
     );
 
+    headers.set("Accept-Ranges", "bytes");
+
+    const contentRange = fileResponse.headers.get("content-range");
+    if (contentRange) headers.set("Content-Range", contentRange);
+
     const length = fileResponse.headers.get("content-length");
     if (length) headers.set("Content-Length", length);
 
-    headers.set("Cache-Control", "private, max-age=300");
+    // Telegram file bytes for a given file_id never change, so this is
+    // safe to cache hard on the client/CDN instead of the old 5-minute TTL.
+    headers.set("Cache-Control", "public, max-age=31536000, immutable");
 
     return new Response(fileResponse.body, {
-      status: 200,
+      status: range ? 206 : 200,
       headers,
     });
   } catch (error) {

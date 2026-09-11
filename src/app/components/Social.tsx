@@ -1291,7 +1291,7 @@ export default function Social() {
                           src={streamUrl}
                           className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.025]"
                           playsInline
-                          preload="metadata"
+                          preload="none"
                           muted
                         />
                       ) : (
@@ -1677,6 +1677,16 @@ export default function Social() {
               const isLiked =
                 likedIds.has(video.id);
 
+              /*
+               * Only mount a <video> element for the active reel and
+               * its immediate neighbours. Every mounted <video> fires
+               * a network request through our Telegram proxy, so
+               * rendering all 50 at once was the main cause of the
+               * phone hanging when opening reels.
+               */
+              const shouldLoad =
+                Math.abs(index - activeReelIndex) <= 1;
+
               return (
                 <section
                   key={video.id}
@@ -1685,7 +1695,7 @@ export default function Social() {
 
                   {/* VIDEO */}
 
-                  {streamUrl ? (
+                  {streamUrl && shouldLoad ? (
                     <video
                       ref={(el) => {
                         if (el) {
@@ -1698,10 +1708,13 @@ export default function Social() {
                       className="h-full w-full object-contain"
                       controls
                       playsInline
-                      preload={index === activeReelIndex ? "auto" : "metadata"}
+                      preload={index === activeReelIndex ? "auto" : "none"}
                       muted={false}
                       loop
                     />
+                  ) : streamUrl ? (
+                    // Off-screen placeholder: no network request until scrolled near.
+                    <div className="h-full w-full bg-black" />
                   ) : (
                     <div className="text-sm text-white/40">
                       Video unavailable
