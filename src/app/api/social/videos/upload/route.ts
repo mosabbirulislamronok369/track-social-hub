@@ -1,77 +1,205 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
-
-const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_CHAT_ID = process.env.YOUR_CHANNEL_ID || process.env.TELEGRAM_CHANNEL_ID;
 
 export async function POST(request: Request) {
   try {
-    if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) {
+    const supabaseUrl =
+      process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+    const supabaseKey =
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+    const telegramToken =
+      process.env.TELEGRAM_BOT_TOKEN;
+
+    const telegramChatId =
+      process.env.TELEGRAM_STORAGE_CHAT_ID;
+
+    if (!supabaseUrl || !supabaseKey) {
       return NextResponse.json(
-        { error: "Telegram storage environment variables are missing." },
+        {
+          success: false,
+          error:
+            "Supabase environment variables are missing.",
+        },
         { status: 500 },
       );
     }
 
-    const formData = await request.formData();
-    const file = formData.get("video");
-    const caption = formData.get("caption");
-    const title = formData.get("title");
+    if (!telegramToken || !telegramChatId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Telegram storage environment variables are missing.",
+        },
+        { status: 500 },
+      );
+    }
+
+    const authorization =
+      request.headers.get("authorization");
+
+    if (!authorization?.startsWith("Bearer ")) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Please login before uploading.",
+        },
+        { status: 401 },
+      );
+    }
+
+    const accessToken =
+      authorization.slice(7).trim();
+
+    if (!accessToken) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Login access token is missing.",
+        },
+        { status: 401 },
+      );
+    }
+
+    const supabase = createClient(
+      supabaseUrl,
+      supabaseKey,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+        global: {
+          headers: {
+            Authorization:
+              `Bearer ${accessToken}`,
+          },
+        },
+      },
+    );
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Invalid or expired login session.",
+        },
+        { status: 401 },
+      );
+    }
+
+    const formData =
+      await request.formData();
+
+    const file =
+      formData.get("video");
+
+    const title =
+      formData.get("title");
+
+    const caption =
+      formData.get("caption");
 
     if (!(file instanceof File)) {
       return NextResponse.json(
-        { error: "A video file is required." },
+        {
+          success: false,
+          error:
+            "A video file is required.",
+        },
         { status: 400 },
       );
     }
 
     if (!file.type.startsWith("video/")) {
       return NextResponse.json(
-        { error: "Only video files are allowed." },
+        {
+          success: false,
+          error:
+            "Only video files are allowed.",
+        },
         { status: 400 },
       );
     }
 
-    /*
-     * The browser sends the file directly to this Node.js route, and this route
-     * streams it to Telegram without putting the binary into Supabase Storage.
-     *
-     * This avoids any Supabase Storage usage. Vercel's request/body limits still
-     * apply to this architecture; for truly large files, use a signed/direct
-     * client-to-Telegram upload flow in a future phase.
-     */
+    // ------------------------------------------
+    // Caption
+    // ------------------------------------------
 
-    const telegramForm = new FormData();
-    telegramForm.append("chat_id", TELEGRAM_CHAT_ID);
+    const finalCaption =
+      typeof caption === "string" &&
+      caption.trim()
+        ? caption.trim()
+        : typeof title === "string" &&
+          title.trim()
+          ? title.trim()
+          : file.name;
+
+    // ------------------------------------------
+    // Telegram upload
+    // ------------------------------------------
+
+    const telegramForm =
+      new FormData();
+
+    telegramForm.append(
+      "chat_id",
+      telegramChatId,
+    );
+
     telegramForm.append(
       "caption",
-      typeof caption === "string" && caption.trim()
-        ? caption.trim()
-        : typeof title === "string" && title.trim()
-          ? title.trim()
-          : file.name,
-    );
-    telegramForm.append("supports_streaming", "true");
-    telegramForm.append("video", file, file.name);
-
-    const telegramResponse = await fetch(
-      `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendVideo`,
-      {
-        method: "POST",
-        body: telegramForm,
-        cache: "no-store",
-      },
+      finalCaption,
     );
 
-    const telegramData = await telegramResponse.json();
+    telegramForm.append(
+      "supports_streaming",
+      "true",
+    );
 
-    if (!telegramResponse.ok || !telegramData?.ok) {
-      console.error("Telegram sendVideo error:", telegramData);
+    telegramForm.append(
+      "video",
+      file,
+      file.name,
+    );
+
+    const telegramResponse =
+      await fetch(
+        `https://api.telegram.org/bot${telegramToken}/sendVideo`,
+        {
+          method: "POST",
+          body: telegramForm,
+        },
+      );
+
+    const telegramData: any =
+      await telegramResponse.json();
+
+    if (
+      !telegramResponse.ok ||
+      !telegramData?.ok
+    ) {
+      console.error(
+        "Telegram sendVideo error:",
+        telegramData,
+      );
 
       return NextResponse.json(
         {
+          success: false,
           error:
             telegramData?.description ||
             "Telegram rejected the video upload.",
@@ -80,43 +208,142 @@ export async function POST(request: Request) {
       );
     }
 
-    const message = telegramData.result;
-    const telegramFileId =
-      message?.video?.file_id ||
-      message?.document?.file_id ||
-      null;
+    const message =
+      telegramData.result;
 
-    if (!telegramFileId) {
+    const telegramVideo =
+      message?.video;
+
+    if (!telegramVideo?.file_id) {
       return NextResponse.json(
-        { error: "Telegram upload succeeded but no file_id was returned." },
+        {
+          success: false,
+          error:
+            "Telegram video file_id is missing.",
+        },
         { status: 502 },
+      );
+    }
+
+    // ------------------------------------------
+    // Supabase database
+    // ------------------------------------------
+
+    const { data, error } =
+      await supabase
+        .from("social_videos")
+        .insert({
+          user_id: user.id,
+
+          title:
+            typeof title === "string"
+              ? title.trim().slice(0, 180) || null
+              : null,
+
+          caption:
+            typeof caption === "string"
+              ? caption.trim().slice(0, 1024) || null
+              : null,
+
+          telegram_file_id:
+            telegramVideo.file_id,
+
+          telegram_message_id:
+            message.message_id ?? null,
+
+          telegram_chat_id:
+            telegramChatId,
+
+          mime_type:
+            file.type,
+
+          original_filename:
+            file.name,
+
+          file_size:
+            file.size,
+
+          width:
+            telegramVideo.width ?? null,
+
+          height:
+            telegramVideo.height ?? null,
+
+          duration_seconds:
+            telegramVideo.duration ?? null,
+        })
+        .select("*")
+        .single();
+
+    if (error) {
+      console.error(
+        "social_videos insert failed:",
+        error,
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Video uploaded to Telegram, but database save failed.",
+        },
+        { status: 500 },
       );
     }
 
     return NextResponse.json({
       success: true,
-      message: "Video uploaded to Telegram successfully.",
+
+      message:
+        "Video uploaded successfully.",
+
       storage: {
         provider: "telegram",
-        telegram_file_id: telegramFileId,
-        telegram_message_id: message.message_id ?? null,
-        mime_type: file.type,
-        original_filename: file.name,
-        file_size: file.size,
-        duration_seconds: message.video?.duration ?? null,
-        width: message.video?.width ?? null,
-        height: message.video?.height ?? null,
+        media_type: "video",
+
+        telegram_chat_id:
+          telegramChatId,
+
+        telegram_file_id:
+          telegramVideo.file_id,
+
+        telegram_message_id:
+          message.message_id ?? null,
+
+        mime_type:
+          file.type,
+
+        original_filename:
+          file.name,
+
+        file_size:
+          file.size,
+
+        width:
+          telegramVideo.width ?? null,
+
+        height:
+          telegramVideo.height ?? null,
+
+        duration_seconds:
+          telegramVideo.duration ?? null,
       },
+
+      database: data,
     });
   } catch (error) {
-    console.error("Telegram video upload error:", error);
+    console.error(
+      "Video upload error:",
+      error,
+    );
 
     return NextResponse.json(
       {
+        success: false,
         error:
           error instanceof Error
             ? error.message
-            : "Telegram storage upload failed.",
+            : "Video upload failed.",
       },
       { status: 500 },
     );

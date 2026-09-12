@@ -1,6 +1,6 @@
 name = "track-social-telegram-upload"
 main = "index.ts"
-compatibility_date = "2026-09-08"
+compatibility_date = "2026-09-11"
 
 [vars]
-# Set these with `wrangler secret put` instead of committing real values.
+TELEGRAM_STORAGE_CHAT_ID = "-1004316050992"

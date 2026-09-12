@@ -1,0 +1,32 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+
+  "name": "track-social-hub",
+
+  "compatibility_date": "2026-09-11",
+
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+
+  "main": "vinext/server/fetch-handler",
+
+  "assets": {
+    "not_found_handling": "none"
+  },
+
+  "cache": {
+    "enabled": true
+  },
+
+  "version_metadata": {
+    "binding": "CF_VERSION_METADATA"
+  },
+
+  "kv_namespaces": [
+    {
+      "binding": "VINEXT_KV_CACHE",
+      "id": "c71b463f3bc54c2494f27c114a391832"
+    }
+  ]
+}

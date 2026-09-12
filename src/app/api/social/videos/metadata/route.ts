@@ -1,160 +1,165 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-
-export async function POST(request: Request) {
+export async function POST(
+  request: Request,
+) {
   try {
-    if (!SUPABASE_URL || !SUPABASE_KEY) {
+    const url =
+      process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+    const key =
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+    if (!url || !key) {
       return NextResponse.json(
         {
-          error: "Supabase environment variables are missing.",
+          error:
+            "Supabase environment variables are missing.",
         },
         { status: 500 },
       );
     }
 
-    // ---------------------------------------------
-    // Get user's Supabase access token
-    // ---------------------------------------------
-
     const authorization =
-      request.headers.get("authorization") || "";
+      request.headers.get("authorization");
 
-    const token = authorization.startsWith("Bearer ")
-      ? authorization.slice(7)
-      : null;
-
-    if (!token) {
+    if (
+      !authorization?.startsWith(
+        "Bearer ",
+      )
+    ) {
       return NextResponse.json(
         {
-          error: "Authentication required.",
+          error:
+            "Authentication required.",
         },
         { status: 401 },
       );
     }
 
-    // ---------------------------------------------
-    // Create Supabase client WITH user's JWT
-    // This is important for RLS.
-    // ---------------------------------------------
+    const token =
+      authorization.slice(7).trim();
 
-    const userSupabase = createClient(
-      SUPABASE_URL,
-      SUPABASE_KEY,
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`,
+    const supabase =
+      createClient(
+        url,
+        key,
+        {
+          global: {
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
           },
         },
-      },
-    );
-
-    // ---------------------------------------------
-    // Verify user
-    // ---------------------------------------------
+      );
 
     const {
       data: { user },
-      error: userError,
-    } = await userSupabase.auth.getUser(token);
+      error: authError,
+    } =
+      await supabase.auth.getUser(
+        token,
+      );
 
-    if (userError || !user) {
-      console.error("Supabase auth error:", userError);
-
+    if (authError || !user) {
       return NextResponse.json(
         {
-          error: "Invalid session.",
+          error:
+            "Invalid session.",
         },
         { status: 401 },
       );
     }
 
-    // ---------------------------------------------
-    // Read request body
-    // ---------------------------------------------
+    const body =
+      await request.json();
 
-    const body = await request.json();
+    const storage =
+      body?.storage;
 
-    const storage = body?.storage;
-
-    if (!storage?.telegram_file_id) {
+    if (
+      !storage?.telegram_file_id
+    ) {
       return NextResponse.json(
         {
-          error: "Telegram storage data is required.",
+          error:
+            "Telegram storage data is required.",
         },
         { status: 400 },
       );
     }
 
-    // ---------------------------------------------
-    // Insert metadata
-    // RLS now sees auth.uid() correctly.
-    // ---------------------------------------------
+    const { data, error } =
+      await supabase
+        .from("social_videos")
+        .insert({
+          user_id: user.id,
 
-    const { data, error } = await userSupabase
-      .from("social_videos")
-      .insert({
-        user_id: user.id,
+          title:
+            typeof body.title === "string"
+              ? body.title.trim().slice(0, 180) || null
+              : null,
 
-        title:
-          typeof body.title === "string"
-            ? body.title
-            : null,
+          caption:
+            typeof body.caption === "string"
+              ? body.caption.trim().slice(0, 1024) || null
+              : null,
 
-        caption:
-          typeof body.caption === "string"
-            ? body.caption
-            : null,
+          telegram_chat_id:
+            storage.telegram_chat_id ??
+            process.env
+              .TELEGRAM_STORAGE_CHAT_ID ??
+            null,
 
-        telegram_chat_id:
-          storage.telegram_chat_id ??
-          process.env.TELEGRAM_STORAGE_CHAT_ID ??
-          null,
+          telegram_file_id:
+            storage.telegram_file_id,
 
-        telegram_file_id:
-          storage.telegram_file_id,
+          telegram_message_id:
+            storage.telegram_message_id ??
+            null,
 
-        telegram_message_id:
-          storage.telegram_message_id ?? null,
+          mime_type:
+            storage.mime_type ??
+            null,
 
-        mime_type:
-          storage.mime_type ?? null,
+          original_filename:
+            storage.original_filename ??
+            null,
 
-        original_filename:
-          storage.original_filename ?? null,
+          file_size:
+            storage.file_size ??
+            null,
 
-        file_size:
-          storage.file_size ?? null,
+          width:
+            storage.width ??
+            null,
 
-        width:
-          storage.width ?? null,
+          height:
+            storage.height ??
+            null,
 
-        height:
-          storage.height ?? null,
-
-        duration_seconds:
-          storage.duration_seconds ?? null,
-      })
-      .select("*")
-      .single();
+          duration_seconds:
+            storage.duration_seconds ??
+            null,
+        })
+        .select("*")
+        .single();
 
     if (error) {
       console.error(
-        "Social video metadata insert error:",
+        "Social video metadata error:",
         error,
       );
 
       return NextResponse.json(
         {
           error: error.message,
-          details: error.details ?? null,
-          hint: error.hint ?? null,
+          details:
+            error.details ?? null,
+          hint:
+            error.hint ?? null,
         },
         { status: 500 },
       );

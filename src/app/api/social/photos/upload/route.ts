@@ -1,18 +1,38 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
-
-const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-
-const TELEGRAM_CHAT_ID =
-  process.env.TELEGRAM_STORAGE_CHAT_ID;
 
 export async function POST(request: Request) {
   try {
-    if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) {
+    const supabaseUrl =
+      process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+    const supabaseKey =
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+    const telegramToken =
+      process.env.TELEGRAM_BOT_TOKEN;
+
+    const telegramChatId =
+      process.env.TELEGRAM_STORAGE_CHAT_ID;
+
+    if (!supabaseUrl || !supabaseKey) {
       return NextResponse.json(
         {
+          success: false,
+          error:
+            "Supabase environment variables are missing.",
+        },
+        { status: 500 },
+      );
+    }
+
+    if (!telegramToken || !telegramChatId) {
+      return NextResponse.json(
+        {
+          success: false,
           error:
             "Telegram storage environment variables are missing.",
         },
@@ -20,32 +40,104 @@ export async function POST(request: Request) {
       );
     }
 
-    const formData = await request.formData();
+    const authorization =
+      request.headers.get("authorization");
 
-    const file = formData.get("photo");
-    const title = formData.get("title");
-    const caption = formData.get("caption");
+    if (!authorization?.startsWith("Bearer ")) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Please login before uploading.",
+        },
+        { status: 401 },
+      );
+    }
+
+    const accessToken =
+      authorization.slice(7).trim();
+
+    if (!accessToken) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Login access token is missing.",
+        },
+        { status: 401 },
+      );
+    }
+
+    const supabase = createClient(
+      supabaseUrl,
+      supabaseKey,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+        global: {
+          headers: {
+            Authorization:
+              `Bearer ${accessToken}`,
+          },
+        },
+      },
+    );
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Invalid or expired login session.",
+        },
+        { status: 401 },
+      );
+    }
+
+    const formData =
+      await request.formData();
+
+    const file =
+      formData.get("photo");
+
+    const title =
+      formData.get("title");
+
+    const caption =
+      formData.get("caption");
 
     if (!(file instanceof File)) {
       return NextResponse.json(
-        { error: "A photo file is required." },
+        {
+          success: false,
+          error:
+            "A photo file is required.",
+        },
         { status: 400 },
       );
     }
 
     if (!file.type.startsWith("image/")) {
       return NextResponse.json(
-        { error: "Only image files are allowed." },
+        {
+          success: false,
+          error:
+            "Only image files are allowed.",
+        },
         { status: 400 },
       );
     }
 
-    const telegramForm = new FormData();
-
-    telegramForm.append(
-      "chat_id",
-      TELEGRAM_CHAT_ID,
-    );
+    // ------------------------------------------
+    // Caption
+    // ------------------------------------------
 
     const finalCaption =
       typeof caption === "string" &&
@@ -55,6 +147,18 @@ export async function POST(request: Request) {
           title.trim()
           ? title.trim()
           : file.name;
+
+    // ------------------------------------------
+    // Telegram upload
+    // ------------------------------------------
+
+    const telegramForm =
+      new FormData();
+
+    telegramForm.append(
+      "chat_id",
+      telegramChatId,
+    );
 
     telegramForm.append(
       "caption",
@@ -67,16 +171,16 @@ export async function POST(request: Request) {
       file.name,
     );
 
-    const telegramResponse = await fetch(
-      `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendPhoto`,
-      {
-        method: "POST",
-        body: telegramForm,
-        cache: "no-store",
-      },
-    );
+    const telegramResponse =
+      await fetch(
+        `https://api.telegram.org/bot${telegramToken}/sendPhoto`,
+        {
+          method: "POST",
+          body: telegramForm,
+        },
+      );
 
-    const telegramData =
+    const telegramData: any =
       await telegramResponse.json();
 
     if (
@@ -90,6 +194,7 @@ export async function POST(request: Request) {
 
       return NextResponse.json(
         {
+          success: false,
           error:
             telegramData?.description ||
             "Telegram rejected the photo upload.",
@@ -98,9 +203,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const message = telegramData.result;
+    const message =
+      telegramData.result;
 
-    const photos = message?.photo;
+    const photos =
+      message?.photo;
 
     if (
       !Array.isArray(photos) ||
@@ -108,6 +215,7 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json(
         {
+          success: false,
           error:
             "Telegram succeeded but returned no photo.",
         },
@@ -115,14 +223,13 @@ export async function POST(request: Request) {
       );
     }
 
-    // Telegram returns multiple sizes.
-    // The last one is normally the largest.
-    const photo =
+    const telegramPhoto =
       photos[photos.length - 1];
 
-    if (!photo?.file_id) {
+    if (!telegramPhoto?.file_id) {
       return NextResponse.json(
         {
+          success: false,
           error:
             "Telegram photo file_id is missing.",
         },
@@ -130,20 +237,84 @@ export async function POST(request: Request) {
       );
     }
 
+    // ------------------------------------------
+    // Supabase database
+    // ------------------------------------------
+
+    const { data, error } =
+      await supabase
+        .from("social_photos")
+        .insert({
+          user_id: user.id,
+
+          title:
+            typeof title === "string"
+              ? title.trim().slice(0, 180) || null
+              : null,
+
+          caption:
+            typeof caption === "string"
+              ? caption.trim().slice(0, 1024) || null
+              : null,
+
+          telegram_file_id:
+            telegramPhoto.file_id,
+
+          telegram_message_id:
+            message.message_id ?? null,
+
+          telegram_chat_id:
+            telegramChatId,
+
+          mime_type:
+            file.type || "image/jpeg",
+
+          original_filename:
+            file.name,
+
+          file_size:
+            file.size,
+
+          width:
+            telegramPhoto.width ?? null,
+
+          height:
+            telegramPhoto.height ?? null,
+        })
+        .select("*")
+        .single();
+
+    if (error) {
+      console.error(
+        "social_photos insert failed:",
+        error,
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Photo uploaded to Telegram, but database save failed.",
+        },
+        { status: 500 },
+      );
+    }
+
     return NextResponse.json({
       success: true,
 
       message:
-        "Photo uploaded to Telegram successfully.",
+        "Photo uploaded successfully.",
 
       storage: {
         provider: "telegram",
+        media_type: "photo",
 
         telegram_chat_id:
-          TELEGRAM_CHAT_ID,
+          telegramChatId,
 
         telegram_file_id:
-          photo.file_id,
+          telegramPhoto.file_id,
 
         telegram_message_id:
           message.message_id ?? null,
@@ -158,20 +329,23 @@ export async function POST(request: Request) {
           file.size,
 
         width:
-          photo.width ?? null,
+          telegramPhoto.width ?? null,
 
         height:
-          photo.height ?? null,
+          telegramPhoto.height ?? null,
       },
+
+      database: data,
     });
   } catch (error) {
     console.error(
-      "Telegram photo upload error:",
+      "Photo upload error:",
       error,
     );
 
     return NextResponse.json(
       {
+        success: false,
         error:
           error instanceof Error
             ? error.message
