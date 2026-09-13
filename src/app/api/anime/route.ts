@@ -1,92 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const ANILIST_URL = "https://graphql.anilist.co";
-
-const query = `
-  query (
-    $page: Int!
-    $perPage: Int!
-    $search: String
-  ) {
-    Page(
-      page: $page
-      perPage: $perPage
-    ) {
-      pageInfo {
-        currentPage
-        lastPage
-        hasNextPage
-        total
-      }
-
-      media(
-        type: ANIME
-        search: $search
-        sort: [POPULARITY_DESC, SCORE_DESC]
-      ) {
-        id
-        idMal
-
-        title {
-          romaji
-          english
-          native
-          userPreferred
-        }
-
-        type
-        format
-        status
-
-        description
-
-        startDate {
-          year
-          month
-          day
-        }
-
-        endDate {
-          year
-          month
-          day
-        }
-
-        season
-        seasonYear
-
-        episodes
-        duration
-
-        genres
-
-        averageScore
-        popularity
-        favourites
-
-        coverImage {
-          extraLarge
-          large
-          medium
-        }
-
-        bannerImage
-
-        trailer {
-          id
-          site
-          thumbnail
-        }
-
-        nextAiringEpisode {
-          airingAt
-          timeUntilAiring
-          episode
-        }
-      }
-    }
-  }
-`;
+const JIKAN_URL = "https://api.jikan.moe/v4/anime";
 
 function cleanDescription(value: unknown): string | null {
   if (typeof value !== "string" || !value.trim()) {
@@ -105,243 +19,298 @@ function cleanDescription(value: unknown): string | null {
     .trim();
 }
 
-function getYear(item: any): number | null {
-  const year =
-    item?.seasonYear ??
-    item?.startDate?.year ??
-    null;
+function getYear(anime: any): number | null {
+  if (
+    typeof anime?.year === "number" &&
+    anime.year > 0
+  ) {
+    return anime.year;
+  }
 
-  return typeof year === "number" && year > 0
-    ? year
-    : null;
+  const date = anime?.aired?.from;
+
+  if (typeof date === "string") {
+    const year = Number(date.slice(0, 4));
+
+    if (
+      Number.isFinite(year) &&
+      year > 0
+    ) {
+      return year;
+    }
+  }
+
+  return null;
 }
 
-function getImage(item: any): string {
+function getDate(anime: any): string | null {
+  const date = anime?.aired?.from;
+
+  if (
+    typeof date === "string" &&
+    date.length >= 10
+  ) {
+    return date.slice(0, 10);
+  }
+
+  return null;
+}
+
+function getImage(anime: any): string {
   return (
-    item?.coverImage?.extraLarge ||
-    item?.coverImage?.large ||
-    item?.coverImage?.medium ||
+    anime?.images?.jpg?.large_image_url ||
+    anime?.images?.jpg?.image_url ||
+    anime?.images?.webp?.large_image_url ||
+    anime?.images?.webp?.image_url ||
     ""
   );
 }
 
-function getTitle(item: any): string {
-  return (
-    item?.title?.english ||
-    item?.title?.romaji ||
-    item?.title?.native ||
-    item?.title?.userPreferred ||
-    "Unknown Anime"
-  );
-}
-
-function getEnglishTitle(item: any): string {
-  return (
-    item?.title?.english ||
-    item?.title?.romaji ||
-    item?.title?.native ||
-    "Unknown Anime"
-  );
-}
-
-function getDate(item: any): string | null {
-  const year = item?.startDate?.year;
-  const month = item?.startDate?.month;
-  const day = item?.startDate?.day;
-
-  if (
-    typeof year !== "number" ||
-    typeof month !== "number" ||
-    typeof day !== "number"
-  ) {
+function getScore(anime: any): number | null {
+  if (typeof anime?.score !== "number") {
     return null;
   }
 
-  const mm = String(month).padStart(2, "0");
-  const dd = String(day).padStart(2, "0");
-
-  return `${year}-${mm}-${dd}`;
+  return anime.score;
 }
 
-function getScore(item: any): number | null {
-  if (typeof item?.averageScore !== "number") {
-    return null;
-  }
-
-  return Number((item.averageScore / 10).toFixed(2));
-}
-
-function getEpisodes(item: any): number | null {
+function getEpisodes(anime: any): number | null {
   /*
-   * AniList's `episodes` is the total number of episodes
-   * when AniList knows the total.
-   *
    * IMPORTANT:
-   * Do not replace a real episode count with nextAiringEpisode.episode.
-   * nextAiringEpisode.episode means the NEXT episode number,
-   * not the total episode count.
+   *
+   * Jikan's `episodes` is the total known episode count.
+   *
+   * Do NOT use aired.episodes here as a replacement when
+   * episodes is missing because aired.episodes may represent
+   * currently aired episodes, not necessarily the final total.
    */
 
   if (
-    typeof item?.episodes === "number" &&
-    item.episodes > 0
+    typeof anime?.episodes === "number" &&
+    anime.episodes > 0
   ) {
-    return item.episodes;
+    return anime.episodes;
   }
 
+  /*
+   * If total episodes are genuinely unknown, return null.
+   * This prevents showing a wrong episode number.
+   */
   return null;
 }
 
-function getDuration(item: any): string | null {
+function getDurationMinutes(anime: any): number | null {
   if (
-    typeof item?.duration === "number" &&
-    item.duration > 0
+    typeof anime?.duration === "string"
   ) {
-    return `${item.duration} min`;
+    const match = anime.duration.match(
+      /(\d+)\s*min/i,
+    );
+
+    if (match) {
+      const minutes = Number(match[1]);
+
+      if (
+        Number.isFinite(minutes) &&
+        minutes > 0
+      ) {
+        return minutes;
+      }
+    }
   }
 
   return null;
 }
 
-function normalizeAnime(item: any) {
-  const episodes = getEpisodes(item);
+function normalizeAnime(anime: any) {
+  const image = getImage(anime);
+  const episodes = getEpisodes(anime);
+  const durationMinutes =
+    getDurationMinutes(anime);
+
+  const title =
+    anime?.title_english ||
+    anime?.title ||
+    anime?.title_japanese ||
+    "Unknown Anime";
+
+  const englishTitle =
+    anime?.title_english ||
+    anime?.title ||
+    anime?.title_japanese ||
+    title;
 
   return {
     /*
-     * Keep MAL id when available because the existing
-     * AnimeBrowser normalizer expects mal_id.
+     * MAL ID
+     *
+     * Your existing frontend already supports mal_id.
      */
-    mal_id: item?.idMal || item?.id,
+    mal_id:
+      typeof anime?.mal_id === "number"
+        ? anime.mal_id
+        : anime?.mal_id ?? anime?.id,
 
     /*
-     * AniList ID is also preserved.
+     * Keep an id as well.
      */
-    id: item?.id,
+    id:
+      anime?.mal_id ??
+      anime?.id ??
+      null,
 
-    title: getTitle(item),
+    title,
 
-    title_english: getEnglishTitle(item),
+    title_english: englishTitle,
 
     title_japanese:
-      item?.title?.native || null,
+      anime?.title_japanese || null,
 
     images: {
       jpg: {
-        image_url: getImage(item),
-        large_image_url: getImage(item),
+        image_url:
+          anime?.images?.jpg?.image_url ||
+          image,
+
+        large_image_url:
+          anime?.images?.jpg?.large_image_url ||
+          image,
       },
     },
 
     synopsis: cleanDescription(
-      item?.description,
+      anime?.synopsis,
     ),
 
-    score: getScore(item),
+    score: getScore(anime),
 
+    /*
+     * FULL TOTAL EPISODE COUNT
+     */
     episodes,
 
     /*
-     * This is the full episode duration,
-     * not total anime watch time.
+     * Keep the original Jikan duration string.
      */
-    duration: getDuration(item),
+    duration:
+      typeof anime?.duration === "string"
+        ? anime.duration
+        : null,
 
     /*
-     * Keep the numeric duration too.
-     * Existing frontend can use this for calculations.
+     * Numeric duration for the frontend.
      */
     duration_minutes:
-      typeof item?.duration === "number" &&
-      item.duration > 0
-        ? item.duration
-        : null,
+      durationMinutes,
 
-    year: getYear(item),
+    /*
+     * Existing frontend uses this field too.
+     */
+    episodeRuntime:
+      durationMinutes,
 
-    date: getDate(item),
+    year:
+      getYear(anime),
 
-    status: item?.status || null,
+    date:
+      getDate(anime),
+
+    status:
+      anime?.status || null,
 
     type:
-      item?.format ||
-      item?.type ||
+      anime?.type ||
+      anime?.format ||
       null,
 
-    format: item?.format || null,
+    format:
+      anime?.type || null,
 
-    season: item?.season || null,
+    source:
+      anime?.source || null,
+
+    rating:
+      anime?.rating || null,
+
+    season:
+      anime?.season || null,
 
     seasonYear:
-      typeof item?.seasonYear === "number"
-        ? item.seasonYear
+      typeof anime?.year === "number"
+        ? anime.year
         : null,
 
-    genres: Array.isArray(item?.genres)
-      ? item.genres.map((genre: string) => ({
-          name: genre,
-        }))
+    genres: Array.isArray(
+      anime?.genres,
+    )
+      ? anime.genres.map(
+          (genre: any) => ({
+            name:
+              genre?.name ||
+              "",
+          }),
+        )
       : [],
 
     popularity:
-      typeof item?.popularity === "number"
-        ? item.popularity
+      typeof anime?.popularity === "number"
+        ? anime.popularity
         : 0,
 
     favourites:
-      typeof item?.favourites === "number"
-        ? item.favourites
+      typeof anime?.favorites === "number"
+        ? anime.favorites
         : 0,
 
     bannerImage:
-      item?.bannerImage || null,
+      anime?.images?.jpg
+        ?.large_image_url ||
+      null,
 
-    trailer: item?.trailer || null,
+    trailer:
+      anime?.trailer || null,
 
     /*
-     * Useful for currently airing anime.
-     * This does NOT replace `episodes`.
+     * Additional useful fields.
      */
-    nextAiringEpisode:
-      item?.nextAiringEpisode
-        ? {
-            episode:
-              typeof item.nextAiringEpisode.episode ===
-              "number"
-                ? item.nextAiringEpisode.episode
-                : null,
+    aired: anime?.aired || null,
 
-            airingAt:
-              typeof item.nextAiringEpisode.airingAt ===
-              "number"
-                ? item.nextAiringEpisode.airingAt
-                : null,
+    broadcast:
+      anime?.broadcast || null,
 
-            timeUntilAiring:
-              typeof item.nextAiringEpisode
-                .timeUntilAiring === "number"
-                ? item.nextAiringEpisode
-                    .timeUntilAiring
-                : null,
-          }
-        : null,
+    studios: Array.isArray(
+      anime?.studios,
+    )
+      ? anime.studios.map(
+          (studio: any) => ({
+            name:
+              studio?.name ||
+              "",
+          }),
+        )
+      : [],
   };
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest,
+) {
   try {
-    const { searchParams } = new URL(
-      request.url,
-    );
+    const { searchParams } =
+      new URL(request.url);
 
     const search =
-      searchParams.get("q")?.trim() || "";
+      searchParams
+        .get("q")
+        ?.trim() || "";
 
     const rawPage = Number(
       searchParams.get("page") || "1",
     );
 
     const page =
-      Number.isFinite(rawPage) && rawPage > 0
+      Number.isFinite(rawPage) &&
+      rawPage > 0
         ? Math.floor(rawPage)
         : 1;
 
@@ -350,70 +319,93 @@ export async function GET(request: NextRequest) {
     );
 
     /*
-     * AniList allows up to 50 items per page.
+     * Jikan supports pagination.
+     *
+     * Keep our frontend request at 24,
+     * but never allow an invalid value.
      */
-    const perPage = Math.min(
-      50,
-      Math.max(
-        1,
-        Number.isFinite(rawLimit)
-          ? Math.floor(rawLimit)
-          : 24,
-      ),
+    const limit =
+      Number.isFinite(rawLimit) &&
+      rawLimit > 0
+        ? Math.min(
+            25,
+            Math.floor(rawLimit),
+          )
+        : 24;
+
+    /*
+     * Build Jikan URL.
+     */
+    const params =
+      new URLSearchParams();
+
+    if (search) {
+      params.set("q", search);
+    }
+
+    params.set(
+      "page",
+      String(page),
     );
+
+    params.set(
+      "limit",
+      String(limit),
+    );
+
+    /*
+     * Safe-for-work results.
+     *
+     * This is Jikan's equivalent of keeping
+     * adult content out of normal search.
+     */
+    params.set("sfw", "true");
+
+    const url =
+      `${JIKAN_URL}?${params.toString()}`;
 
     const controller =
       new AbortController();
 
-    const timeout = setTimeout(() => {
-      controller.abort();
-    }, 20000);
+    const timeout =
+      setTimeout(() => {
+        controller.abort();
+      }, 20000);
 
     try {
-      const response = await fetch(
-        ANILIST_URL,
-        {
-          method: "POST",
+      const response =
+        await fetch(url, {
+          method: "GET",
 
           headers: {
-            "Content-Type":
-              "application/json",
             Accept:
               "application/json",
           },
 
-          body: JSON.stringify({
-            query,
-            variables: {
-              page,
-              perPage,
-              search: search || null,
-            },
-          }),
-
-          signal: controller.signal,
+          signal:
+            controller.signal,
 
           cache: "no-store",
-        },
-      );
+        });
 
       clearTimeout(timeout);
 
-      /*
-       * Read response safely.
-       */
       let json: any = null;
 
       try {
-        json = await response.json();
+        json =
+          await response.json();
       } catch {
         return NextResponse.json(
           {
             error:
-              "AniList returned an invalid response",
-            status: response.status,
+              "Jikan returned an invalid response",
+
             message:
-              "AniList did not return valid JSON.",
+              "Anime API did not return valid JSON.",
+
+            status:
+              response.status,
           },
           {
             status: 502,
@@ -422,24 +414,53 @@ export async function GET(request: NextRequest) {
       }
 
       /*
-       * HTTP-level error.
+       * Handle Jikan errors.
        */
       if (!response.ok) {
         console.error(
-          "AniList HTTP error:",
+          "Jikan HTTP error:",
           response.status,
           json,
         );
 
+        /*
+         * Jikan commonly uses 429 for
+         * rate limiting.
+         */
+        if (
+          response.status === 429
+        ) {
+          return NextResponse.json(
+            {
+              error:
+                "Anime API rate limited",
+
+              message:
+                "Anime search is temporarily rate limited. Please wait a few seconds and try again.",
+
+              status: 429,
+            },
+            {
+              status: 429,
+              headers: {
+                "Retry-After": "3",
+              },
+            },
+          );
+        }
+
         return NextResponse.json(
           {
             error:
-              "AniList API request failed",
-            status: response.status,
+              "Jikan API request failed",
+
+            status:
+              response.status,
+
             message:
-              json?.errors?.[0]?.message ||
               json?.message ||
-              "AniList API returned an HTTP error.",
+              json?.error ||
+              "Jikan API returned an error.",
           },
           {
             status: 502,
@@ -448,46 +469,24 @@ export async function GET(request: NextRequest) {
       }
 
       /*
-       * GraphQL-level error.
+       * Validate data.
        */
       if (
-        Array.isArray(json?.errors) &&
-        json.errors.length > 0
+        !json ||
+        !Array.isArray(json.data)
       ) {
         console.error(
-          "AniList GraphQL error:",
-          json.errors,
-        );
-
-        return NextResponse.json(
-          {
-            error:
-              "AniList GraphQL error",
-            message:
-              json.errors[0]?.message ||
-              "AniList returned a GraphQL error.",
-          },
-          {
-            status: 502,
-          },
-        );
-      }
-
-      const pageData =
-        json?.data?.Page;
-
-      if (!pageData) {
-        console.error(
-          "Invalid AniList response:",
+          "Invalid Jikan response:",
           json,
         );
 
         return NextResponse.json(
           {
             error:
-              "Invalid AniList response",
+              "Invalid Jikan response",
+
             message:
-              "AniList did not return Page data.",
+              "Jikan did not return an anime data array.",
           },
           {
             status: 502,
@@ -495,64 +494,72 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      const media = Array.isArray(
-        pageData.media,
-      )
-        ? pageData.media
-        : [];
+      /*
+       * Normalize all anime results.
+       */
+      const anime =
+        json.data.map(
+          normalizeAnime,
+        );
 
-      const anime = media.map(
-        normalizeAnime,
-      );
+      const pagination =
+        json.pagination || {};
 
-      const pageInfo =
-        pageData.pageInfo || {};
+      const currentPage =
+        Number(
+          pagination.current_page,
+        ) || page;
 
+      const lastVisiblePage =
+        Number(
+          pagination.last_visible_page,
+        ) || currentPage;
+
+      const hasNextPage =
+        Boolean(
+          pagination.has_next_page,
+        );
+
+      const total =
+        typeof pagination.items?.total ===
+        "number"
+          ? pagination.items.total
+          : typeof pagination.total ===
+              "number"
+            ? pagination.total
+            : anime.length;
+
+      /*
+       * Return the exact shape that
+       * UniversalBrowser.tsx already expects.
+       */
       return NextResponse.json(
         {
           data: anime,
 
-          /*
-           * Keep this compatible with
-           * UniversalBrowser.tsx.
-           */
           pagination: {
             current_page:
-              pageInfo.currentPage ||
-              page,
+              currentPage,
 
             last_visible_page:
-              pageInfo.lastPage ||
-              page,
+              lastVisiblePage,
 
             has_next_page:
-              Boolean(
-                pageInfo.hasNextPage,
-              ),
+              hasNextPage,
 
-            total:
-              typeof pageInfo.total ===
-              "number"
-                ? pageInfo.total
-                : anime.length,
+            total,
           },
 
           /*
-           * Also expose these aliases so future
-           * frontend code can use either format.
+           * Extra aliases for compatibility.
            */
-          page: pageInfo.currentPage || page,
+          page:
+            currentPage,
 
           hasNextPage:
-            Boolean(
-              pageInfo.hasNextPage,
-            ),
+            hasNextPage,
 
-          total:
-            typeof pageInfo.total ===
-            "number"
-              ? pageInfo.total
-              : anime.length,
+          total,
         },
         {
           status: 200,
@@ -562,7 +569,7 @@ export async function GET(request: NextRequest) {
       clearTimeout(timeout);
 
       console.error(
-        "AniList request error:",
+        "Jikan request error:",
         error,
       );
 
@@ -573,7 +580,8 @@ export async function GET(request: NextRequest) {
         return NextResponse.json(
           {
             error:
-              "AniList API timed out",
+              "Jikan API timed out",
+
             message:
               "Anime API timed out. Please try again.",
           },
@@ -591,7 +599,7 @@ export async function GET(request: NextRequest) {
           message:
             error instanceof Error
               ? error.message
-              : "Unknown API error",
+              : "Unknown Jikan API error.",
         },
         {
           status: 502,
@@ -612,7 +620,7 @@ export async function GET(request: NextRequest) {
         message:
           error instanceof Error
             ? error.message
-            : "Unknown server error",
+            : "Unknown server error.",
       },
       {
         status: 500,
