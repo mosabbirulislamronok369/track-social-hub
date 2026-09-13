@@ -39,10 +39,7 @@ function getImage(anime: any): string {
 }
 
 function getYear(anime: any): number | null {
-  if (
-    typeof anime?.year === "number" &&
-    anime.year > 0
-  ) {
+  if (typeof anime?.year === "number" && anime.year > 0) {
     return anime.year;
   }
 
@@ -51,10 +48,7 @@ function getYear(anime: any): number | null {
   if (typeof date === "string") {
     const year = Number(date.slice(0, 4));
 
-    if (
-      Number.isFinite(year) &&
-      year > 0
-    ) {
+    if (Number.isFinite(year) && year > 0) {
       return year;
     }
   }
@@ -65,10 +59,7 @@ function getYear(anime: any): number | null {
 function getDate(anime: any): string | null {
   const date = anime?.aired?.from;
 
-  if (
-    typeof date === "string" &&
-    date.length >= 10
-  ) {
+  if (typeof date === "string" && date.length >= 10) {
     return date.slice(0, 10);
   }
 
@@ -80,9 +71,7 @@ function getDurationMinutes(anime: any): number | null {
     return null;
   }
 
-  const match = anime.duration.match(
-    /(\d+)\s*min/i,
-  );
+  const match = anime.duration.match(/(\d+)\s*min/i);
 
   if (!match) {
     return null;
@@ -108,8 +97,7 @@ function getEpisodes(anime: any): number | null {
 
 function normalizeJikanAnime(anime: any) {
   const image = getImage(anime);
-  const durationMinutes =
-    getDurationMinutes(anime);
+  const durationMinutes = getDurationMinutes(anime);
 
   const title =
     anime?.title_english ||
@@ -151,20 +139,13 @@ function normalizeJikanAnime(anime: any) {
       },
     },
 
-    synopsis: cleanDescription(
-      anime?.synopsis,
-    ),
+    synopsis: cleanDescription(anime?.synopsis),
 
     score:
       typeof anime?.score === "number"
         ? anime.score
         : null,
 
-    /*
-     * Total known episode count.
-     *
-     * Do not replace this with aired.episodes.
-     */
     episodes: getEpisodes(anime),
 
     duration:
@@ -172,20 +153,15 @@ function normalizeJikanAnime(anime: any) {
         ? anime.duration
         : null,
 
-    duration_minutes:
-      durationMinutes,
+    duration_minutes: durationMinutes,
 
-    episodeRuntime:
-      durationMinutes,
+    episodeRuntime: durationMinutes,
 
-    year:
-      getYear(anime),
+    year: getYear(anime),
 
-    date:
-      getDate(anime),
+    date: getDate(anime),
 
-    status:
-      anime?.status || null,
+    status: anime?.status || null,
 
     type:
       anime?.type ||
@@ -197,14 +173,11 @@ function normalizeJikanAnime(anime: any) {
       anime?.format ||
       null,
 
-    source:
-      anime?.source || null,
+    source: anime?.source || null,
 
-    rating:
-      anime?.rating || null,
+    rating: anime?.rating || null,
 
-    season:
-      anime?.season || null,
+    season: anime?.season || null,
 
     seasonYear:
       typeof anime?.year === "number"
@@ -270,10 +243,6 @@ function normalizeTvMazeShow(show: any) {
     : [];
 
   return {
-    /*
-     * TVMaze does not guarantee a MAL ID.
-     * Use a stable fallback ID.
-     */
     mal_id:
       typeof show?.id === "number"
         ? `tvmaze-${show.id}`
@@ -292,8 +261,7 @@ function normalizeTvMazeShow(show: any) {
       show?.name ||
       "Unknown Anime",
 
-    title_japanese:
-      null,
+    title_japanese: null,
 
     images: {
       jpg: {
@@ -303,21 +271,13 @@ function normalizeTvMazeShow(show: any) {
     },
 
     synopsis:
-      cleanDescription(
-        show?.summary,
-      ),
+      cleanDescription(show?.summary),
 
     score:
       typeof show?.rating?.average === "number"
         ? show.rating.average
         : null,
 
-    /*
-     * TVMaze search does not provide
-     * total episode count here.
-     *
-     * Keep null rather than inventing it.
-     */
     episodes: null,
 
     duration:
@@ -336,14 +296,13 @@ function normalizeTvMazeShow(show: any) {
         : null,
 
     year:
-  typeof year === "number" &&
-  Number.isFinite(year) &&
-  year > 0
-    ? year
-    : null,
+      typeof year === "number" &&
+      Number.isFinite(year) &&
+      year > 0
+        ? year
+        : null,
 
-    date:
-      premiered,
+    date: premiered,
 
     status:
       show?.status || null,
@@ -354,21 +313,19 @@ function normalizeTvMazeShow(show: any) {
     format:
       show?.type || null,
 
-    source:
-      "TVMaze",
+    source: "TVMaze",
 
     rating:
       show?.rating?.average ?? null,
 
-    season:
-      null,
+    season: null,
 
     seasonYear:
-  typeof year === "number" &&
-  Number.isFinite(year) &&
-  year > 0
-    ? year
-    : null,
+      typeof year === "number" &&
+      Number.isFinite(year) &&
+      year > 0
+        ? year
+        : null,
 
     genres,
 
@@ -379,8 +336,7 @@ function normalizeTvMazeShow(show: any) {
     bannerImage:
       image || null,
 
-    trailer:
-      null,
+    trailer: null,
 
     aired: {
       from: premiered,
@@ -401,45 +357,33 @@ async function fetchJson(
   init: RequestInit = {},
   timeout = REQUEST_TIMEOUT,
 ) {
-  const controller =
-    new AbortController();
+  const controller = new AbortController();
 
   const timer = setTimeout(() => {
     controller.abort();
   }, timeout);
 
   try {
-    const response = await fetch(
-      url,
-      {
-        ...init,
-        signal: controller.signal,
-        cache: "no-store",
-      },
-    );
+    const response = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+      cache: "no-store",
+    });
 
     const contentType =
-      response.headers.get(
-        "content-type",
-      ) || "";
+      response.headers.get("content-type") || "";
 
     let json: any = null;
 
-    if (
-      contentType.includes(
-        "application/json",
-      )
-    ) {
+    if (contentType.includes("application/json")) {
       try {
-        json =
-          await response.json();
+        json = await response.json();
       } catch {
         json = null;
       }
     } else {
       try {
-        const text =
-          await response.text();
+        const text = await response.text();
 
         try {
           json = JSON.parse(text);
@@ -467,30 +411,17 @@ async function fetchJikan(
   page: number,
   limit: number,
 ) {
-  const params =
-    new URLSearchParams();
+  const params = new URLSearchParams();
 
   if (search) {
     params.set("q", search);
   }
 
-  params.set(
-    "page",
-    String(page),
-  );
+  params.set("page", String(page));
+  params.set("limit", String(limit));
+  params.set("sfw", "true");
 
-  params.set(
-    "limit",
-    String(limit),
-  );
-
-  params.set(
-    "sfw",
-    "true",
-  );
-
-  const url =
-    `${JIKAN_URL}?${params.toString()}`;
+  const url = `${JIKAN_URL}?${params.toString()}`;
 
   let lastError: unknown = null;
 
@@ -503,16 +434,12 @@ async function fetchJikan(
       const {
         response,
         json,
-      } = await fetchJson(
-        url,
-        {
-          method: "GET",
-          headers: {
-            Accept:
-              "application/json",
-          },
+      } = await fetchJson(url, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
         },
-      );
+      });
 
       if (response.ok) {
         if (
@@ -522,31 +449,27 @@ async function fetchJikan(
           return {
             ok: true,
             data: json.data,
-            pagination:
-              json.pagination || {},
+            pagination: json.pagination || {},
           };
         }
 
-        lastError =
-          new Error(
-            "Jikan returned an invalid data structure.",
-          );
+        lastError = new Error(
+          "Jikan returned an invalid data structure.",
+        );
       } else {
-        const status =
-          response.status;
+        const status = response.status;
 
-        lastError =
-          new Error(
-            `Jikan returned HTTP ${status}: ${
-              json?.message ||
-              json?.error ||
-              "Unknown error"
-            }`,
-          );
+        lastError = new Error(
+          `Jikan returned HTTP ${status}: ${
+            json?.message ||
+            json?.error ||
+            "Unknown error"
+          }`,
+        );
 
         /*
-         * Do not retry normal client errors
-         * such as 400/404.
+         * Do not retry normal 4xx errors.
+         * Retry 429 and 5xx only.
          */
         if (
           status >= 400 &&
@@ -560,17 +483,118 @@ async function fetchJikan(
       lastError = error;
     }
 
-    if (
-      attempt < JIKAN_RETRIES
-    ) {
-      await sleep(
-        700 * (attempt + 1),
-      );
+    if (attempt < JIKAN_RETRIES) {
+      await sleep(700 * (attempt + 1));
     }
   }
 
   console.error(
     "Jikan unavailable:",
+    lastError,
+  );
+
+  return {
+    ok: false,
+    error: lastError,
+  };
+}
+
+/* ============================================================
+   JIKAN EPISODES
+============================================================ */
+
+async function fetchJikanEpisodes(
+  malId: string,
+  page: number,
+) {
+  const url =
+    `${JIKAN_URL}/${encodeURIComponent(malId)}/episodes` +
+    `?page=${page}`;
+
+  let lastError: unknown = null;
+
+  for (
+    let attempt = 0;
+    attempt <= JIKAN_RETRIES;
+    attempt++
+  ) {
+    try {
+      const {
+        response,
+        json,
+      } = await fetchJson(url, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+      });
+
+      if (response.ok) {
+        if (
+          json &&
+          Array.isArray(json.data)
+        ) {
+          const episodes = json.data.map(
+            (ep: any) => ({
+              episodeNumber:
+                typeof ep?.mal_id === "number"
+                  ? ep.mal_id
+                  : null,
+
+              name:
+                ep?.title ||
+                `Episode ${ep?.mal_id ?? ""}`,
+
+              runtimeSeconds: 0,
+
+              airDate:
+                typeof ep?.aired === "string"
+                  ? ep.aired
+                  : null,
+            }),
+          );
+
+          return {
+            ok: true,
+            data: episodes,
+            pagination:
+              json.pagination || {},
+          };
+        }
+
+        lastError = new Error(
+          "Jikan returned an invalid episode response.",
+        );
+      } else {
+        const status = response.status;
+
+        lastError = new Error(
+          `Jikan episode API returned HTTP ${status}: ${
+            json?.message ||
+            json?.error ||
+            "Unknown error"
+          }`,
+        );
+
+        if (
+          status >= 400 &&
+          status < 500 &&
+          status !== 429
+        ) {
+          break;
+        }
+      }
+    } catch (error) {
+      lastError = error;
+    }
+
+    if (attempt < JIKAN_RETRIES) {
+      await sleep(700 * (attempt + 1));
+    }
+  }
+
+  console.error(
+    "Jikan episode API unavailable:",
     lastError,
   );
 
@@ -590,13 +614,9 @@ async function fetchTvMazeFallback(
     };
   }
 
-  const params =
-    new URLSearchParams();
+  const params = new URLSearchParams();
 
-  params.set(
-    "q",
-    search,
-  );
+  params.set("q", search);
 
   const url =
     `${TVMAZE_SEARCH_URL}?${params.toString()}`;
@@ -605,16 +625,12 @@ async function fetchTvMazeFallback(
     const {
       response,
       json,
-    } = await fetchJson(
-      url,
-      {
-        method: "GET",
-        headers: {
-          Accept:
-            "application/json",
-        },
+    } = await fetchJson(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
       },
-    );
+    });
 
     if (!response.ok) {
       console.error(
@@ -637,14 +653,9 @@ async function fetchTvMazeFallback(
     }
 
     const data = json
-      .map(
-        (item: any) =>
-          item?.show,
-      )
+      .map((item: any) => item?.show)
       .filter(Boolean)
-      .map(
-        normalizeTvMazeShow,
-      );
+      .map(normalizeTvMazeShow);
 
     return {
       ok: true,
@@ -667,11 +678,135 @@ export async function GET(
   request: NextRequest,
 ) {
   try {
-    const {
-      searchParams,
-    } = new URL(
-      request.url,
-    );
+    const { searchParams } =
+      new URL(request.url);
+
+    /*
+     * ========================================================
+     * ANIME EPISODES
+     * /api/anime?malId=20&episodes=true&page=1
+     * ========================================================
+     */
+
+    const malId =
+      searchParams.get("malId")?.trim() || "";
+
+    const episodes =
+      searchParams.get("episodes") === "true";
+
+    if (episodes) {
+      if (!malId) {
+        return NextResponse.json(
+          {
+            error:
+              "Missing MAL ID",
+            message:
+              "malId is required when loading anime episodes.",
+            data: [],
+          },
+          { status: 400 },
+        );
+      }
+
+      const rawEpisodePage =
+        Number(
+          searchParams.get("page") || "1",
+        );
+
+      const episodePage =
+        Number.isFinite(rawEpisodePage) &&
+        rawEpisodePage > 0
+          ? Math.floor(rawEpisodePage)
+          : 1;
+
+      const result =
+        await fetchJikanEpisodes(
+          malId,
+          episodePage,
+        );
+
+      if (!result.ok) {
+        const errorMessage =
+          result.error instanceof Error
+            ? result.error.message
+            : "Jikan episode service is unavailable.";
+
+        return NextResponse.json(
+          {
+            error:
+              "Anime episode service is temporarily unavailable",
+            message: errorMessage,
+            data: [],
+            source: "jikan",
+          },
+          {
+            status: 502,
+            headers: {
+              "Cache-Control":
+                "no-store",
+            },
+          },
+        );
+      }
+
+      const pagination =
+        result.pagination || {};
+
+      return NextResponse.json(
+        {
+          data: result.data,
+
+          pagination: {
+            current_page:
+              Number(
+                pagination.current_page,
+              ) || episodePage,
+
+            last_visible_page:
+              Number(
+                pagination.last_visible_page,
+              ) || episodePage,
+
+            has_next_page:
+              Boolean(
+                pagination.has_next_page,
+              ),
+
+            total:
+              typeof pagination.items?.total ===
+              "number"
+                ? pagination.items.total
+                : result.data.length,
+          },
+
+          page:
+            Number(
+              pagination.current_page,
+            ) || episodePage,
+
+          hasNextPage:
+            Boolean(
+              pagination.has_next_page,
+            ),
+
+          source: "jikan",
+        },
+        {
+          status: 200,
+
+          headers: {
+            "Cache-Control":
+              "public, max-age=30, s-maxage=60",
+          },
+        },
+      );
+    }
+
+    /*
+     * ========================================================
+     * NORMAL ANIME SEARCH
+     * ========================================================
+     */
 
     const search =
       searchParams
@@ -680,30 +815,23 @@ export async function GET(
 
     const rawPage =
       Number(
-        searchParams.get(
-          "page",
-        ) || "1",
+        searchParams.get("page") || "1",
       );
 
     const rawLimit =
       Number(
-        searchParams.get(
-          "limit",
-        ) || String(MAX_LIMIT),
+        searchParams.get("limit") ||
+          String(MAX_LIMIT),
       );
 
     const page =
-      Number.isFinite(
-        rawPage,
-      ) &&
+      Number.isFinite(rawPage) &&
       rawPage > 0
         ? Math.floor(rawPage)
         : 1;
 
     const limit =
-      Number.isFinite(
-        rawLimit,
-      ) &&
+      Number.isFinite(rawLimit) &&
       rawLimit > 0
         ? Math.min(
             MAX_LIMIT,
@@ -712,20 +840,21 @@ export async function GET(
         : MAX_LIMIT;
 
     /*
-     * Empty query:
-     * return an empty result instead of
-     * requesting the whole Jikan database.
+     * Empty query
      */
+
     if (!search) {
       return NextResponse.json(
         {
           data: [],
+
           pagination: {
             current_page: 1,
             last_visible_page: 1,
             has_next_page: false,
             total: 0,
           },
+
           page: 1,
           hasNextPage: false,
           total: 0,
@@ -738,10 +867,11 @@ export async function GET(
     }
 
     /*
-     * ========================================
+     * ========================================================
      * PRIMARY: JIKAN
-     * ========================================
+     * ========================================================
      */
+
     const jikan =
       await fetchJikan(
         search,
@@ -774,8 +904,8 @@ export async function GET(
         );
 
       const total =
-        typeof pagination.items
-          ?.total === "number"
+        typeof pagination.items?.total ===
+        "number"
           ? pagination.items.total
           : typeof pagination.total ===
               "number"
@@ -799,11 +929,9 @@ export async function GET(
             total,
           },
 
-          page:
-            currentPage,
+          page: currentPage,
 
-          hasNextPage:
-            hasNextPage,
+          hasNextPage,
 
           total,
 
@@ -811,6 +939,7 @@ export async function GET(
         },
         {
           status: 200,
+
           headers: {
             "Cache-Control":
               "public, max-age=30, s-maxage=60",
@@ -820,13 +949,11 @@ export async function GET(
     }
 
     /*
-     * ========================================
+     * ========================================================
      * FALLBACK: TVMAZE
-     * ========================================
-     *
-     * This keeps search from completely
-     * breaking when Jikan/MAL is down.
+     * ========================================================
      */
+
     const fallback =
       await fetchTvMazeFallback(
         search,
@@ -857,8 +984,7 @@ export async function GET(
           data: pageData,
 
           pagination: {
-            current_page:
-              page,
+            current_page: page,
 
             last_visible_page:
               Math.max(
@@ -890,6 +1016,7 @@ export async function GET(
         },
         {
           status: 200,
+
           headers: {
             "Cache-Control":
               "public, max-age=30, s-maxage=60",
@@ -901,6 +1028,7 @@ export async function GET(
     /*
      * Both providers failed.
      */
+
     return NextResponse.json(
       {
         error:
@@ -912,15 +1040,9 @@ export async function GET(
         data: [],
 
         pagination: {
-          current_page:
-            page,
-
-          last_visible_page:
-            page,
-
-          has_next_page:
-            false,
-
+          current_page: page,
+          last_visible_page: page,
+          has_next_page: false,
           total: 0,
         },
       },
