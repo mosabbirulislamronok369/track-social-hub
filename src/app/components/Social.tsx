@@ -5,7 +5,6 @@ import {
   DragEvent,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -157,8 +156,14 @@ export default function Social({
     new Map(),
   );
 
+  const PAGE_SIZE = 25;
   const [videos, setVideos] = useState<SocialVideo[]>([]);
   const [photos, setPhotos] = useState<SocialPhoto[]>([]);
+  const [videoPage, setVideoPage] = useState(0);
+  const [photoPage, setPhotoPage] = useState(0);
+  const [hasMoreVideos, setHasMoreVideos] = useState(true);
+  const [hasMorePhotos, setHasMorePhotos] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const [file, setFile] = useState<File | null>(null);
 
@@ -181,6 +186,8 @@ export default function Social({
 
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
+  const [reactionByVideo, setReactionByVideo] = useState<Record<string, string>>({});
+  const [reactionOpenId, setReactionOpenId] = useState<string | null>(null);
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>(
     {},
   );
@@ -200,44 +207,72 @@ export default function Social({
    * ---------------------------------------------------------
    */
 
-  const loadFeed = useCallback(async () => {
-    setLoading(true);
-    setError("");
-
-    const [
-      { data: videoData, error: videoError },
-      { data: photoData, error: photoError },
-    ] = await Promise.all([
-      supabase
-        .from("social_videos")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(50),
-
-      supabase
-        .from("social_photos")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(50),
-    ]);
-
-    if (videoError) {
-      console.error("Social video feed error:", videoError);
+  const loadFeed = useCallback(async (append = false, target: "videos" | "photos" = activeTab) => {
+    if (append) setLoadingMore(true);
+    else {
+      setLoading(true);
+      setError("");
     }
 
-    if (photoError) {
-      console.error("Social photo feed error:", photoError);
+    const videoNextPage = append ? videoPage + 1 : 0;
+    const photoNextPage = append ? photoPage + 1 : 0;
+    const videoFrom = videoNextPage * PAGE_SIZE;
+    const photoFrom = photoNextPage * PAGE_SIZE;
+
+    const requests = append
+      ? target === "videos"
+        ? [
+            supabase.from("social_videos").select("*")
+              .order("created_at", { ascending: false })
+              .range(videoFrom, videoFrom + PAGE_SIZE - 1),
+          ]
+        : [
+            supabase.from("social_photos").select("*")
+              .order("created_at", { ascending: false })
+              .range(photoFrom, photoFrom + PAGE_SIZE - 1),
+          ]
+      : [
+          supabase.from("social_videos").select("*")
+            .order("created_at", { ascending: false })
+            .range(0, PAGE_SIZE - 1),
+          supabase.from("social_photos").select("*")
+            .order("created_at", { ascending: false })
+            .range(0, PAGE_SIZE - 1),
+        ];
+
+    const results = await Promise.all(requests);
+    const videoResult = append && target === "photos" ? null : results[0];
+    const photoResult = append && target === "photos" ? results[0] : append ? null : results[1];
+
+    if (videoResult) {
+      const nextVideos = (videoResult.data ?? []) as SocialVideo[];
+      if (append) setVideos((prev) => [...prev, ...nextVideos]);
+      else setVideos(nextVideos);
+      setVideoPage(videoNextPage);
+      setHasMoreVideos(nextVideos.length === PAGE_SIZE);
+      if (videoResult.error) console.error("Social video feed error:", videoResult.error);
     }
 
-    setVideos((videoData ?? []) as SocialVideo[]);
-    setPhotos((photoData ?? []) as SocialPhoto[]);
-
-    if (videoError && photoError) {
-      setError(videoError.message);
+    if (photoResult) {
+      const nextPhotos = (photoResult.data ?? []) as SocialPhoto[];
+      if (append) setPhotos((prev) => [...prev, ...nextPhotos]);
+      else setPhotos(nextPhotos);
+      setPhotoPage(photoNextPage);
+      setHasMorePhotos(nextPhotos.length === PAGE_SIZE);
+      if (photoResult.error) console.error("Social photo feed error:", photoResult.error);
+      if (!append && videoResult?.error && photoResult.error) setError(videoResult.error.message);
     }
 
     setLoading(false);
-  }, []);
+    setLoadingMore(false);
+  }, [activeTab, photoPage, videoPage]);
+
+  async function loadMoreFeed() {
+    if (loadingMore) return;
+    if (activeTab === "videos" && !hasMoreVideos) return;
+    if (activeTab === "photos" && !hasMorePhotos) return;
+    await loadFeed(true, activeTab);
+  }
 
   /*
    * ---------------------------------------------------------
@@ -305,8 +340,9 @@ export default function Social({
   }, []);
 
   useEffect(() => {
-    loadFeed();
-  }, [loadFeed]);
+    loadFeed(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /*
    * ---------------------------------------------------------
@@ -323,7 +359,7 @@ export default function Social({
       const [{ data: likes }, { data: commentsData }] = await Promise.all([
         supabase
           .from("social_likes")
-          .select("video_id,user_id")
+          .select("video_id,user_id,reaction")
           .in("video_id", ids),
 
         supabase
@@ -341,6 +377,7 @@ export default function Social({
       }
 
       const mine = new Set<string>();
+      const mineReactions: Record<string, string> = {};
 
       for (const row of likes ?? []) {
         nextLikes[row.video_id] =
@@ -348,6 +385,7 @@ export default function Social({
 
         if (userId && row.user_id === userId) {
           mine.add(row.video_id);
+          mineReactions[row.video_id] = row.reaction || "like";
         }
       }
 
@@ -359,6 +397,7 @@ export default function Social({
       setLikeCounts(nextLikes);
       setCommentCounts(nextComments);
       setLikedIds(mine);
+      setReactionByVideo(mineReactions);
     },
     [],
   );
@@ -797,38 +836,44 @@ export default function Social({
    * ---------------------------------------------------------
    */
 
-  async function toggleLike(videoId: string) {
+  const REACTIONS = [
+    { key: "like", emoji: "👍", label: "Like" },
+    { key: "love", emoji: "❤️", label: "Love" },
+    { key: "haha", emoji: "😂", label: "Haha" },
+    { key: "wow", emoji: "😮", label: "Wow" },
+    { key: "angry", emoji: "😡", label: "Angry" },
+  ] as const;
+
+  async function chooseReaction(videoId: string, reaction: string) {
+    setReactionOpenId(null);
     setActionError("");
 
     if (!currentUserId) {
-      setActionError("Please login to like videos.");
+      setActionError("Please login to react to videos.");
       return;
     }
 
-    const isLiked = likedIds.has(videoId);
+    const currentReaction = reactionByVideo[videoId];
+    const removing = currentReaction === reaction;
 
-    setLikedIds((prev) => {
-      const next = new Set(prev);
-
-      if (isLiked) {
-        next.delete(videoId);
-      } else {
-        next.add(videoId);
-      }
-
+    setReactionByVideo((prev) => {
+      const next = { ...prev };
+      if (removing) delete next[videoId];
+      else next[videoId] = reaction;
       return next;
     });
-
+    setLikedIds((prev) => {
+      const next = new Set(prev);
+      if (removing) next.delete(videoId);
+      else next.add(videoId);
+      return next;
+    });
     setLikeCounts((prev) => ({
       ...prev,
-      [videoId]: Math.max(
-        0,
-        (prev[videoId] ?? 0) +
-          (isLiked ? -1 : 1),
-      ),
+      [videoId]: Math.max(0, (prev[videoId] ?? 0) + (removing ? -1 : currentReaction ? 0 : 1)),
     }));
 
-    const result = isLiked
+    const result = removing
       ? await supabase
           .from("social_likes")
           .delete()
@@ -836,35 +881,19 @@ export default function Social({
           .eq("user_id", currentUserId)
       : await supabase
           .from("social_likes")
-          .insert({
-            video_id: videoId,
-            user_id: currentUserId,
-          });
+          .upsert(
+            { video_id: videoId, user_id: currentUserId, reaction },
+            { onConflict: "video_id,user_id" },
+          );
 
     if (result.error) {
-      setLikedIds((prev) => {
-        const next = new Set(prev);
-
-        if (isLiked) {
-          next.add(videoId);
-        } else {
-          next.delete(videoId);
-        }
-
-        return next;
-      });
-
-      setLikeCounts((prev) => ({
-        ...prev,
-        [videoId]: Math.max(
-          0,
-          (prev[videoId] ?? 0) +
-            (isLiked ? 1 : -1),
-        ),
-      }));
-
       setActionError(result.error.message);
+      await loadSocialStats(videos, currentUserId);
     }
+  }
+
+  async function toggleLike(videoId: string) {
+    await chooseReaction(videoId, reactionByVideo[videoId] || "like");
   }
 
   /*
@@ -1010,24 +1039,6 @@ export default function Social({
 
   /*
    * ---------------------------------------------------------
-   * SELECTED FILE META
-   * ---------------------------------------------------------
-   */
-
-  const selectedMeta = useMemo(() => {
-    if (!file) return null;
-
-    const typeSuffix = file.type.split("/").pop();
-    const ext = file.name.split(".").pop()?.toLowerCase();
-
-    return {
-      size: formatBytes(file.size),
-      kind: typeSuffix || ext || "file",
-    };
-  }, [file]);
-
-  /*
-   * ---------------------------------------------------------
    * RENDER
    * ---------------------------------------------------------
    */
@@ -1155,15 +1166,6 @@ export default function Social({
                       <p className="truncate text-sm font-semibold text-white">
                         {file.name}
                       </p>
-
-                      {selectedMeta && (
-                        <div className="mt-1 flex items-center gap-2 text-xs text-white/35">
-                          <span>{selectedMeta.size}</span>
-                          <span className="rounded border border-white/10 px-1.5 py-0.5 text-[10px] text-white/40">
-                            {selectedMeta.kind}
-                          </span>
-                        </div>
-                      )}
 
                       {uploading && (
                         <div className="mt-4 h-1 overflow-hidden rounded-full bg-white/[0.07]">
@@ -1325,6 +1327,7 @@ export default function Social({
             </div>
           ) : (
 
+            <>
             <div className="mt-5 grid gap-5 lg:grid-cols-2">
 
               {videos.map((video, index) => {
@@ -1346,7 +1349,7 @@ export default function Social({
                 return (
                   <article
                     key={video.id}
-                    className={`group overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0c0c10] transition-colors duration-200 hover:border-white/[0.16] ${
+                    className={`group overflow-hidden rounded-3xl border border-white/[0.07] bg-[#0c0c10]/95 shadow-[0_18px_60px_rgba(0,0,0,0.22)] transition-all duration-300 hover:-translate-y-0.5 hover:border-white/[0.16] hover:shadow-[0_24px_80px_rgba(0,0,0,0.32)] ${
                       isFeatured ? "lg:col-span-2" : ""
                     }`}
                   >
@@ -1448,23 +1451,43 @@ export default function Social({
 
                           <div className="mt-4 flex items-center gap-2 border-t border-white/[0.06] pt-4">
 
-                            <button
-                              type="button"
-                              onClick={() =>
-                                toggleLike(video.id)
-                              }
-                              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
-                                isLiked
-                                  ? "text-[var(--accent-2)]"
-                                  : "text-white/40 hover:text-white"
-                              }`}
-                            >
-                              {isLiked ? "♥" : "♡"}
-
-                              {likeCounts[
-                                video.id
-                              ] ?? 0}
-                            </button>
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setReactionOpenId((id) =>
+                                    id === video.id ? null : video.id,
+                                  )
+                                }
+                                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-bold text-white/65 shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/[0.08] hover:text-white active:scale-95"
+                                aria-label="Choose reaction"
+                              >
+                                <span className="text-base">
+                                  {REACTIONS.find(
+                                    (r) => r.key === reactionByVideo[video.id],
+                                  )?.emoji ?? "♡"}
+                                </span>
+                                {likeCounts[video.id] ?? 0}
+                              </button>
+                              {reactionOpenId === video.id && (
+                                <div className="absolute bottom-[calc(100%+10px)] left-0 z-30 flex items-center gap-1 rounded-full border border-white/10 bg-[#111116]/95 p-1.5 shadow-2xl backdrop-blur-2xl">
+                                  {REACTIONS.map((reaction) => (
+                                    <button
+                                      key={reaction.key}
+                                      type="button"
+                                      title={reaction.label}
+                                      aria-label={reaction.label}
+                                      onClick={() =>
+                                        chooseReaction(video.id, reaction.key)
+                                      }
+                                      className="flex h-9 w-9 items-center justify-center rounded-full text-xl transition-all duration-150 hover:-translate-y-1 hover:scale-125 active:scale-90 hover:bg-white/10"
+                                    >
+                                      {reaction.emoji}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
 
                             <button
                               type="button"
@@ -1591,28 +1614,6 @@ export default function Social({
                             </div>
                           )}
 
-                          <div className="mt-3 flex items-center gap-3 text-[11px] text-white/25">
-
-                            <span>
-                              {formatBytes(
-                                video.file_size,
-                              )}
-                            </span>
-
-                            {video.width &&
-                              video.height && (
-                                <span>
-                                  {video.width} ×{" "}
-                                  {video.height}
-                                </span>
-                              )}
-
-                            <span className="ml-auto text-white/25">
-                              Stored on Telegram
-                            </span>
-
-                          </div>
-
                         </div>
                       </div>
                     </div>
@@ -1621,9 +1622,24 @@ export default function Social({
               })}
 
             </div>
+
+            {hasMoreVideos && (
+              <div className="mt-7 flex justify-center">
+                <button
+                  type="button"
+                  onClick={loadMoreFeed}
+                  disabled={loadingMore}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.045] px-6 py-3 text-sm font-bold text-white/75 shadow-lg backdrop-blur-xl transition-all duration-200 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.08] hover:text-white active:scale-95 disabled:opacity-50"
+                >
+                  {loadingMore ? "Loading…" : "Load more 25 reels ↓"}
+                </button>
+              </div>
+            )}
+            </>
           )
 
         ) : (
+
 
           /* =================================================
              PHOTO FEED
@@ -1643,6 +1659,7 @@ export default function Social({
             </div>
           ) : (
 
+            <>
             <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
 
               {photos.map((photo) => {
@@ -1656,7 +1673,7 @@ export default function Social({
                 return (
                   <article
                     key={photo.id}
-                    className="group overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0c0c10] transition-colors duration-200 hover:border-white/[0.16]"
+                    className="group overflow-hidden rounded-3xl border border-white/[0.07] bg-[#0c0c10]/95 shadow-[0_18px_60px_rgba(0,0,0,0.22)] transition-all duration-300 hover:-translate-y-0.5 hover:border-white/[0.16] hover:shadow-[0_24px_80px_rgba(0,0,0,0.32)]"
                   >
 
                     <div className="relative aspect-[4/5] overflow-hidden bg-black">
@@ -1721,28 +1738,6 @@ export default function Social({
                             {photo.caption}
                           </p>
                         )}
-
-                        <div className="mt-3 flex items-center gap-3 text-[10px] text-white/40">
-
-                          <span>
-                            {formatBytes(
-                              photo.file_size,
-                            )}
-                          </span>
-
-                          {photo.width &&
-                            photo.height && (
-                              <span>
-                                {photo.width} ×{" "}
-                                {photo.height}
-                              </span>
-                            )}
-
-                          <span className="ml-auto text-white/40">
-                            Telegram
-                          </span>
-
-                        </div>
                       </div>
 
                     </div>
@@ -1752,6 +1747,20 @@ export default function Social({
               })}
 
             </div>
+
+            {hasMorePhotos && (
+              <div className="mt-7 flex justify-center">
+                <button
+                  type="button"
+                  onClick={loadMoreFeed}
+                  disabled={loadingMore}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.045] px-6 py-3 text-sm font-bold text-white/75 shadow-lg backdrop-blur-xl transition-all duration-200 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.08] hover:text-white active:scale-95 disabled:opacity-50"
+                >
+                  {loadingMore ? "Loading…" : "Load more 25 photos ↓"}
+                </button>
+              </div>
+            )}
+            </>
           )
         )}
       </section>
@@ -1917,27 +1926,45 @@ export default function Social({
 
                   <div className="absolute bottom-10 right-4 z-20 flex flex-col items-center gap-3 sm:right-[calc(50%-350px)]">
 
-                    <button
-                      type="button"
-                      onClick={() =>
-                        toggleLike(video.id)
-                      }
-                      className={`flex h-12 w-12 flex-col items-center justify-center rounded-full border backdrop-blur-xl transition ${
-                        isLiked
-                          ? "border-[var(--accent)]/40 bg-[var(--accent-soft)] text-[var(--accent-2)]"
-                          : "border-white/15 bg-white/10 text-white"
-                      }`}
-                    >
-                      <span className="text-xl leading-none">
-                        {isLiked ? "♥" : "♡"}
-                      </span>
-
-                      <span className="mt-0.5 text-[9px] font-bold">
-                        {likeCounts[
-                          video.id
-                        ] ?? 0}
-                      </span>
-                    </button>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setReactionOpenId((id) =>
+                            id === video.id ? null : video.id,
+                          )
+                        }
+                        className="flex h-12 w-12 flex-col items-center justify-center rounded-full border border-white/15 bg-white/10 text-white shadow-xl backdrop-blur-xl transition-all duration-200 hover:scale-105 hover:bg-white/15 active:scale-95"
+                        aria-label="Choose reaction"
+                      >
+                        <span className="text-xl leading-none">
+                          {REACTIONS.find(
+                            (r) => r.key === reactionByVideo[video.id],
+                          )?.emoji ?? "♡"}
+                        </span>
+                        <span className="mt-0.5 text-[9px] font-bold">
+                          {likeCounts[video.id] ?? 0}
+                        </span>
+                      </button>
+                      {reactionOpenId === video.id && (
+                        <div className="absolute bottom-0 right-[calc(100%+10px)] flex items-center gap-1 rounded-full border border-white/10 bg-black/75 p-1.5 shadow-2xl backdrop-blur-2xl">
+                          {REACTIONS.map((reaction) => (
+                            <button
+                              key={reaction.key}
+                              type="button"
+                              title={reaction.label}
+                              aria-label={reaction.label}
+                              onClick={() =>
+                                chooseReaction(video.id, reaction.key)
+                              }
+                              className="flex h-9 w-9 items-center justify-center rounded-full text-xl transition-all duration-150 hover:-translate-y-1 hover:scale-125 active:scale-90 hover:bg-white/10"
+                            >
+                              {reaction.emoji}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
 
                     <button
                       type="button"
