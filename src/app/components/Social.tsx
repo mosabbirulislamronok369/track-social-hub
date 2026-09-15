@@ -68,7 +68,7 @@ function authorAvatarSrc(info: AuthorInfo | undefined) {
 }
 
 function authorDisplayName(info: AuthorInfo | undefined) {
-  return info?.display_name || info?.name || "Unnamed user";
+  return info?.display_name?.trim() || info?.name?.trim() || "Unnamed user";
 }
 
 function formatBytes(bytes: number | null) {
@@ -178,6 +178,7 @@ export default function Social({
   const [error, setError] = useState("");
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserName, setCurrentUserName] = useState<string>("");
 
   const [activeTab, setActiveTab] = useState<"videos" | "photos">("videos");
 
@@ -323,6 +324,20 @@ export default function Social({
     }
   }, [videos, photos, loadAuthors]);
 
+  useEffect(() => {
+    if (!currentUserId || !currentUserName) return;
+    setAuthors((prev) => ({
+      ...prev,
+      [currentUserId]: {
+        ...(prev[currentUserId] ?? {}),
+        display_name: prev[currentUserId]?.display_name || currentUserName,
+        name: prev[currentUserId]?.name || currentUserName,
+        avatar_url: prev[currentUserId]?.avatar_url ?? null,
+        avatar_telegram_file_id: prev[currentUserId]?.avatar_telegram_file_id ?? null,
+      },
+    }));
+  }, [currentUserId, currentUserName]);
+
   /*
    * ---------------------------------------------------------
    * USER
@@ -336,6 +351,13 @@ export default function Social({
       } = await supabase.auth.getUser();
 
       setCurrentUserId(user?.id ?? null);
+      const metadata = user?.user_metadata as Record<string, unknown> | undefined;
+      const profileName =
+        (typeof metadata?.display_name === "string" && metadata.display_name.trim()) ||
+        (typeof metadata?.name === "string" && metadata.name.trim()) ||
+        (typeof metadata?.full_name === "string" && metadata.full_name.trim()) ||
+        "";
+      setCurrentUserName(profileName);
     })();
   }, []);
 
@@ -1045,11 +1067,11 @@ export default function Social({
 
   return (
     <>
-      <section className="mx-auto w-full max-w-6xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
+      <section className="relative mx-auto w-full max-w-7xl px-4 pb-16 pt-5 sm:px-6 lg:px-8">
 
         {/* HERO */}
 
-        <div className="relative overflow-hidden rounded-[28px] border border-white/[0.07] bg-[#0c0c0f]">
+        <div className="relative overflow-hidden rounded-[32px] border border-white/[0.09] bg-gradient-to-br from-[#171722] via-[#0c0c13] to-[#09090d] shadow-[0_30px_100px_rgba(0,0,0,0.35)]">
 
           <div
             className="pointer-events-none absolute inset-0 opacity-[0.35]"
@@ -1064,11 +1086,11 @@ export default function Social({
             <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
 
               <div className="max-w-xl">
-                <h1 className="font-serif text-4xl italic leading-none text-white sm:text-5xl">
+                <h1 className="text-4xl font-black tracking-[-0.04em] text-white sm:text-6xl">
                   Social
                 </h1>
 
-                <p className="mt-3 text-sm leading-6 text-white/45 sm:text-base">
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-white/50 sm:text-base">
                   A running reel of what you&rsquo;re watching &mdash;
                   clips and stills, kept in one feed.
                 </p>
@@ -1079,7 +1101,7 @@ export default function Social({
                 onClick={() =>
                   inputRef.current?.click()
                 }
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-white/15 bg-white px-5 text-sm font-semibold text-black transition hover:bg-white/90"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white px-6 text-sm font-extrabold text-black shadow-xl transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/90 active:scale-95"
               >
                 <span className="text-base leading-none">
                   +
@@ -1103,7 +1125,7 @@ export default function Social({
               onClick={() =>
                 inputRef.current?.click()
               }
-              className={`mt-7 cursor-pointer rounded-2xl border border-dashed p-5 transition-colors duration-200 sm:p-7 ${
+              className={`mt-7 cursor-pointer rounded-3xl border border-dashed p-5 transition-all duration-300 sm:p-8 ${
                 dragging
                   ? "border-white/40 bg-white/[0.04]"
                   : "border-white/[0.11] bg-black/20 hover:border-white/[0.2]"
@@ -1249,15 +1271,15 @@ export default function Social({
 
           {/* TABS */}
 
-          <div className="inline-flex w-fit gap-6 border-b border-white/[0.08]">
+          <div className="inline-flex w-fit gap-1 rounded-2xl border border-white/[0.08] bg-white/[0.035] p-1.5 shadow-inner">
 
             <button
               type="button"
               onClick={() => setActiveTab("videos")}
-              className={`border-b-2 pb-2 text-sm font-semibold transition ${
+              className={`rounded-xl px-4 py-2 text-sm font-bold transition-all duration-200 ${
                 activeTab === "videos"
-                  ? "border-white text-white"
-                  : "border-transparent text-white/35 hover:text-white/70"
+                  ? "bg-white text-black shadow-lg"
+                  : "text-white/40 hover:bg-white/[0.06] hover:text-white"
               }`}
             >
               Videos{" "}
@@ -1269,10 +1291,10 @@ export default function Social({
             <button
               type="button"
               onClick={() => setActiveTab("photos")}
-              className={`border-b-2 pb-2 text-sm font-semibold transition ${
+              className={`rounded-xl px-4 py-2 text-sm font-bold transition-all duration-200 ${
                 activeTab === "photos"
-                  ? "border-white text-white"
-                  : "border-transparent text-white/35 hover:text-white/70"
+                  ? "bg-white text-black shadow-lg"
+                  : "text-white/40 hover:bg-white/[0.06] hover:text-white"
               }`}
             >
               Photos{" "}
@@ -1362,7 +1384,7 @@ export default function Social({
                         openReels(index)
                       }
                       className={`relative block w-full overflow-hidden bg-black text-left ${
-                        isFeatured ? "aspect-[21/9]" : "aspect-video"
+                        isFeatured ? "aspect-[2/1] sm:aspect-[21/9]" : "aspect-[4/3] sm:aspect-video"
                       }`}
                     >
                       {streamUrl ? (
