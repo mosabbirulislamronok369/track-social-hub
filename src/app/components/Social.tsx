@@ -451,6 +451,53 @@ export default function Social({
 
   /*
    * ---------------------------------------------------------
+   * FILE PICKER / DRAG & DROP
+   * ---------------------------------------------------------
+   */
+
+  function chooseFile(nextFile: File | null) {
+    if (uploading) return;
+
+    if (!nextFile) {
+      setFile(null);
+      setProgress(0);
+      setError("");
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
+
+    const kind = detectMediaKind(nextFile);
+    if (!kind) {
+      setFile(null);
+      setError("Please choose a supported photo or video file.");
+      return;
+    }
+
+    if (nextFile.size > 20 * 1024 * 1024) {
+      setFile(null);
+      setError("File is too large. Maximum size is 20 MB.");
+      return;
+    }
+
+    setError("");
+    setProgress(0);
+    setFile(nextFile);
+  }
+
+  function handleInput(event: ChangeEvent<HTMLInputElement>) {
+    chooseFile(event.target.files?.[0] ?? null);
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setDragging(false);
+
+    if (uploading) return;
+    chooseFile(event.dataTransfer.files?.[0] ?? null);
+  }
+
+  /*
+   * ---------------------------------------------------------
    * UPLOAD
    * ---------------------------------------------------------
    */
