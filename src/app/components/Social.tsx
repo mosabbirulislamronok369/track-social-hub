@@ -2,7 +2,6 @@
 
 import {
   ChangeEvent,
-  DragEvent,
   useCallback,
   useEffect,
   useRef,
@@ -156,6 +155,9 @@ export default function Social({
   const [videos, setVideos] = useState<SocialVideo[]>([]);
   const [photos, setPhotos] = useState<SocialPhoto[]>([]);
 
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+
   const [file, setFile] = useState<File | null>(null);
   const [caption, setCaption] = useState("");
   const [title, setTitle] = useState("");
@@ -169,7 +171,7 @@ export default function Social({
   const [error, setError] = useState("");
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"text" | "videos" | "photos">("text");
+  const [activeTab, setActiveTab] = useState<"text" | "videos" | "photos" | "reels">("reels");
 
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const [currentReactions, setCurrentReactions] = useState<Record<string, ReactionType | null>>({});
@@ -183,28 +185,41 @@ export default function Social({
   const [commentLoading, setCommentLoading] = useState(false);
   const [actionError, setActionError] = useState("");
 
-  /* FETCH FEED */
-  const loadFeed = useCallback(async () => {
+  /* FETCH FEED (PAGINATED 25 ITEMS) */
+  const loadFeed = useCallback(async (isLoadMore = false) => {
     setLoading(true);
     setError("");
+
+    const nextPage = isLoadMore ? page + 1 : 0;
+    const from = nextPage * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
 
     const [
       { data: textData, error: textError },
       { data: videoData, error: videoError },
       { data: photoData, error: photoError },
     ] = await Promise.all([
-      supabase.from("social_texts").select("*").order("created_at", { ascending: false }).limit(PAGE_SIZE),
-      supabase.from("social_videos").select("*").order("created_at", { ascending: false }).limit(PAGE_SIZE),
-      supabase.from("social_photos").select("*").order("created_at", { ascending: false }).limit(PAGE_SIZE),
+      supabase.from("social_texts").select("*").order("created_at", { ascending: false }).range(from, to),
+      supabase.from("social_videos").select("*").order("created_at", { ascending: false }).range(from, to),
+      supabase.from("social_photos").select("*").order("created_at", { ascending: false }).range(from, to),
     ]);
 
-    setTextPosts((textData ?? []) as SocialTextPost[]);
-    setVideos((videoData ?? []) as SocialVideo[]);
-    setPhotos((photoData ?? []) as SocialPhoto[]);
+    if (isLoadMore) {
+      setTextPosts((prev) => [...prev, ...((textData ?? []) as SocialTextPost[])]);
+      setVideos((prev) => [...prev, ...((videoData ?? []) as SocialVideo[])]);
+      setPhotos((prev) => [...prev, ...((photoData ?? []) as SocialPhoto[])]);
+    } else {
+      setTextPosts((textData ?? []) as SocialTextPost[]);
+      setVideos((videoData ?? []) as SocialVideo[]);
+      setPhotos((photoData ?? []) as SocialPhoto[]);
+    }
+
+    setPage(nextPage);
+    if ((videoData?.length || 0) < PAGE_SIZE) setHasMore(false);
 
     if (textError && videoError && photoError) setError("Error loading feed.");
     setLoading(false);
-  }, []);
+  }, [page]);
 
   /* AUTHORS */
   const loadAuthors = useCallback(async (items: { user_id: string }[]) => {
@@ -241,8 +256,26 @@ export default function Social({
       const { data: { user } } = await supabase.auth.getUser();
       setCurrentUserId(user?.id ?? null);
     })();
-    loadFeed();
-  }, [loadFeed]);
+    loadFeed(false);
+  }, []);
+
+  /* OPEN IN LOCAL PLAYER */
+  const openInLocalPlayer = (fileId: string | null, type: "mx" | "vlc" | "telegram" | "copy") => {
+    if (!fileId) return;
+    const directStreamUrl = `${window.location.origin}/api/social/videos/stream?fileId=${encodeURIComponent(fileId)}`;
+
+    if (type === "mx") {
+      window.location.href = `intent:${directStreamUrl}#Intent;package=com.mxtech.videoplayer.ad;type=video/*;end`;
+    } else if (type === "vlc") {
+      window.location.href = `vlc://${directStreamUrl}`;
+    } else if (type === "telegram") {
+      window.open(`https://t.me/share/url?url=${encodeURIComponent(directStreamUrl)}`, "_blank");
+    } else if (type === "copy") {
+      navigator.clipboard.writeText(directStreamUrl);
+      setActionError("Stream link copied!");
+      setTimeout(() => setActionError(""), 2000);
+    }
+  };
 
   /* STATS (LIKES & COMMENTS) */
   const loadSocialStats = useCallback(async (items: { id: string }[], userId: string | null) => {
@@ -331,7 +364,14 @@ export default function Social({
     setError("");
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: refreshData } = await supabase.auth.refreshSession();
+      let session = refreshData.session;
+
+      if (!session) {
+        const { data: currentSessionData } = await supabase.auth.getSession();
+        session = currentSessionData.session;
+      }
+
       if (!session?.access_token) throw new Error("Please login to post.");
 
       let storageData: any = null;
@@ -370,7 +410,6 @@ export default function Social({
         });
       }
 
-      // Telegram Storage fields
       const telegramFields = {
         telegram_chat_id: storageData?.telegram_chat_id || null,
         telegram_file_id: storageData?.telegram_file_id || null,
@@ -389,7 +428,7 @@ export default function Social({
         ...telegramFields,
       };
 
-      if (activeTab === "videos") {
+      if (activeTab === "videos" || activeTab === "reels") {
         metadataEndpoint = "/api/social/videos/metadata";
         payload = {
           title: title.trim() || file?.name || "Untitled Video",
@@ -420,7 +459,7 @@ export default function Social({
       setTextContent("");
       setProgress(100);
       if (inputRef.current) inputRef.current.value = "";
-      await loadFeed();
+      await loadFeed(false);
     } catch (err: any) {
       setError(err.message || "Failed to publish post.");
     } finally {
@@ -516,7 +555,7 @@ export default function Social({
   }
 
   return (
-    <section className="mx-auto w-full max-w-5xl px-4 py-8 font-sans">
+    <section className="mx-auto w-full max-w-5xl px-4 py-8 font-sans text-white">
       {/* HERO POST BUILDER */}
       <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-[#131722] to-[#090b10] p-6 shadow-2xl backdrop-blur-xl sm:p-8">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
@@ -555,11 +594,11 @@ export default function Social({
               onChange={(e) => setTextContent(e.target.value)}
               placeholder="What's on your mind? Share text, ideas or stories..."
               rows={3}
-              className="w-full rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-white placeholder-white/30 outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition"
+              className="w-full rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-white placeholder-white/30 outline-none focus:border-cyan-500/50"
             />
           )}
 
-          {/* DRAG AND DROP FILE ZONE */}
+          {/* DRAG AND DROP ZONE */}
           <div
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
@@ -608,9 +647,9 @@ export default function Social({
         {error && <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2 text-xs text-red-300">{error}</div>}
       </div>
 
-      {/* TABS */}
+      {/* TABS SELECTOR */}
       <div className="mt-8 flex items-center gap-2 border-b border-white/10 pb-3">
-        {(["text", "videos", "photos"] as const).map((tab) => (
+        {(["reels", "videos", "photos", "text"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -618,138 +657,65 @@ export default function Social({
               activeTab === tab ? "bg-white text-black shadow-lg" : "text-white/40 hover:text-white"
             }`}
           >
-            {tab} Feed
+            {tab === "reels" ? "⚡ Reels Feed" : `${tab} Feed`}
           </button>
         ))}
       </div>
 
-      {/* FEED LIST */}
+      {/* FEED CONTROLLER */}
       {loading ? (
         <div className="mt-6 space-y-4">
           {[1, 2, 3].map((n) => (
             <div key={n} className="h-32 animate-pulse rounded-2xl bg-white/5" />
           ))}
         </div>
-      ) : activeTab === "text" ? (
-        <div className="mt-6 space-y-4">
-          {textPosts.length === 0 ? (
-            <div className="py-12 text-center text-xs text-white/30">No text posts found.</div>
-          ) : (
-            textPosts.map((post) => {
-              const author = authors[post.user_id];
-              const streamUrl = post.telegram_file_id
-                ? `/api/social/${post.media_type === "video" ? "videos" : "photos"}/stream?fileId=${encodeURIComponent(post.telegram_file_id)}`
-                : null;
+      ) : activeTab === "reels" ? (
+        /* REELS SNAP-SCROLL VIEW */
+        <div className="mt-6 h-[75vh] w-full snap-y snap-mandatory overflow-y-scroll rounded-3xl border border-white/10 bg-black shadow-2xl">
+          {videos.map((video) => {
+            const streamUrl = video.telegram_file_id
+              ? `/api/social/videos/stream?fileId=${encodeURIComponent(video.telegram_file_id)}`
+              : null;
 
-              return (
-                <article key={post.id} className="relative rounded-2xl border border-white/10 bg-[#0c0f17] p-5 shadow-xl transition hover:border-white/20">
-                  {/* AUTHOR ROW */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <button onClick={() => onViewProfile?.(post.user_id)} className="h-10 w-10 overflow-hidden rounded-xl bg-white/10 flex items-center justify-center font-bold text-white text-xs">
-                        {authorAvatarSrc(author) ? <img src={authorAvatarSrc(author)!} className="h-full w-full object-cover" /> : authorDisplayName(author).charAt(0)}
-                      </button>
-                      <div>
-                        <h4 className="text-xs font-bold text-white">{authorDisplayName(author)}</h4>
-                        <span className="text-[10px] text-white/40">{timeAgo(post.created_at)}</span>
-                      </div>
-                    </div>
+            return (
+              <div key={video.id} className="relative h-full w-full snap-start flex items-center justify-center bg-black">
+                {streamUrl ? (
+                  <video src={streamUrl} controls loop playsInline className="h-full w-full object-contain" />
+                ) : (
+                  <p className="text-xs text-white/40">Stream Error</p>
+                )}
 
-                    {post.user_id === currentUserId && (
-                      <button onClick={() => deletePost(post.id, "text")} className="text-xs text-red-400 hover:underline">Delete</button>
-                    )}
+                <div className="absolute bottom-6 left-6 right-6 flex items-center justify-between rounded-2xl bg-black/60 p-4 backdrop-blur-md border border-white/10">
+                  <div>
+                    <h3 className="text-sm font-bold">{video.title || "Untitled Reel"}</h3>
+                    <p className="text-[10px] text-white/60">{timeAgo(video.created_at)}</p>
                   </div>
 
-                  {/* POST CONTENT */}
-                  {post.title && <h3 className="mt-4 text-base font-bold text-white">{post.title}</h3>}
-                  {post.text_content && <p className="mt-2 text-xs leading-relaxed text-white/80 whitespace-pre-line">{post.text_content}</p>}
-
-                  {/* ATTACHED MEDIA */}
-                  {streamUrl && (
-                    <div className="mt-4 overflow-hidden rounded-xl border border-white/10 bg-black/50">
-                      {post.media_type === "photo" && <img src={streamUrl} alt="" className="max-h-96 w-full object-cover" />}
-                      {post.media_type === "video" && <video src={streamUrl} controls className="max-h-96 w-full" />}
-                      {post.media_type === "voice" && <audio src={streamUrl} controls className="w-full p-2" />}
-                      {post.media_type === "pdf" && (
-                        <div className="p-4 text-xs text-white/80 flex items-center justify-between">
-                          <span>📄 Attached PDF Document</span>
-                          <a href={streamUrl} download className="rounded-lg bg-cyan-500/20 px-3 py-1.5 font-bold text-cyan-400 hover:bg-cyan-500/30">Download</a>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* INTERACTIONS BAR */}
-                  <div className="relative mt-4 flex items-center gap-4 border-t border-white/5 pt-3 text-xs text-white/50">
-                    {/* EMOJI PICKER POPUP */}
-                    {openReactionId === post.id && (
-                      <div className="absolute -top-12 left-0 flex gap-2 rounded-2xl border border-white/10 bg-[#161b26] p-2 shadow-2xl backdrop-blur-xl">
-                        {REACTIONS.map((r) => (
-                          <button key={r.key} onClick={() => setReaction(post.id, r.key)} className="text-lg transition hover:scale-125">
-                            {r.emoji}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    <button
-                      onClick={() => toggleLike(post.id)}
-                      onMouseEnter={() => setOpenReactionId(post.id)}
-                      className="flex items-center gap-1.5 hover:text-white"
-                    >
-                      <span>{currentReactions[post.id] ? REACTIONS.find(r=>r.key === currentReactions[post.id])?.emoji : "👍"}</span>
-                      <span>{likeCounts[post.id] || 0}</span>
+                  <div className="flex gap-2">
+                    <button onClick={() => openInLocalPlayer(video.telegram_file_id, "mx")} className="rounded-lg bg-blue-600 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-blue-500">
+                      MX Player
                     </button>
-
-                    <button onClick={() => toggleComments(post.id)} className="flex items-center gap-1.5 hover:text-white">
-                      💬 <span>{commentCounts[post.id] || 0}</span>
+                    <button onClick={() => openInLocalPlayer(video.telegram_file_id, "telegram")} className="rounded-lg bg-cyan-500 px-3 py-1.5 text-[10px] font-bold text-black hover:bg-cyan-400">
+                      Telegram
                     </button>
-
-                    <button onClick={() => sharePost(post.id)} className="ml-auto hover:text-white">↗ Share</button>
+                    <button onClick={() => openInLocalPlayer(video.telegram_file_id, "copy")} className="rounded-lg bg-white/20 px-2 py-1.5 text-[10px] font-bold hover:bg-white/30">
+                      🔗 Link
+                    </button>
                   </div>
-
-                  {/* COMMENTS SECTION */}
-                  {openComments === post.id && (
-                    <div className="mt-4 border-t border-white/5 pt-3 space-y-3">
-                      <div className="max-h-48 overflow-y-auto space-y-2">
-                        {(comments[post.id] ?? []).map((c) => (
-                          <div key={c.id} className="rounded-xl bg-white/5 p-2.5 text-xs text-white/80">
-                            <p className="text-[10px] font-bold text-cyan-400">{timeAgo(c.created_at)}</p>
-                            <p className="mt-1">{c.body}</p>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="flex gap-2">
-                        <input
-                          value={commentDraft}
-                          onChange={(e) => setCommentDraft(e.target.value)}
-                          placeholder="Write a comment..."
-                          className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-white outline-none focus:border-cyan-500/50"
-                        />
-                        <button
-                          onClick={() => addComment(post.id)}
-                          disabled={commentLoading}
-                          className="rounded-xl bg-white px-4 py-1.5 text-xs font-bold text-black hover:bg-white/90"
-                        >
-                          Send
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </article>
-              );
-            })
-          )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : activeTab === "videos" ? (
+        /* VIDEOS GRID VIEW */
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
           {videos.map((video) => {
             const streamUrl = video.telegram_file_id ? `/api/social/videos/stream?fileId=${encodeURIComponent(video.telegram_file_id)}` : null;
             return (
               <article key={video.id} className="rounded-2xl border border-white/10 bg-[#0c0f17] p-3 shadow-xl">
                 <div className="aspect-video w-full overflow-hidden rounded-xl bg-black">
-                  {streamUrl ? <video src={streamUrl} controls className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-xs text-white/30">Video stream error</div>}
+                  {streamUrl ? <video src={streamUrl} controls className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-xs text-white/30">Video error</div>}
                 </div>
                 <div className="mt-3 flex items-center justify-between">
                   <h4 className="text-xs font-bold text-white truncate">{video.title || "Untitled Video"}</h4>
@@ -757,18 +723,24 @@ export default function Social({
                     <button onClick={() => deletePost(video.id, "video")} className="text-xs text-red-400 hover:underline">Delete</button>
                   )}
                 </div>
+                <div className="mt-3 flex items-center gap-2 border-t border-white/5 pt-3">
+                  <button onClick={() => openInLocalPlayer(video.telegram_file_id, "mx")} className="flex-1 rounded-lg bg-blue-600/30 border border-blue-500/30 py-1.5 text-[10px] font-bold text-blue-300">Open MX</button>
+                  <button onClick={() => openInLocalPlayer(video.telegram_file_id, "telegram")} className="flex-1 rounded-lg bg-cyan-500/30 border border-cyan-500/30 py-1.5 text-[10px] font-bold text-cyan-300">Telegram</button>
+                  <button onClick={() => openInLocalPlayer(video.telegram_file_id, "copy")} className="rounded-lg bg-white/10 px-3 py-1.5 text-[10px] font-bold">Copy Link</button>
+                </div>
               </article>
             );
           })}
         </div>
-      ) : (
+      ) : activeTab === "photos" ? (
+        /* PHOTOS GRID VIEW */
         <div className="mt-6 grid gap-4 sm:grid-cols-3">
           {photos.map((photo) => {
             const streamUrl = photo.telegram_file_id ? `/api/social/photos/stream?fileId=${encodeURIComponent(photo.telegram_file_id)}` : null;
             return (
               <article key={photo.id} className="rounded-2xl border border-white/10 bg-[#0c0f17] p-3 shadow-xl">
                 <div className="aspect-square w-full overflow-hidden rounded-xl bg-black">
-                  {streamUrl ? <img src={streamUrl} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-xs text-white/30">Photo stream error</div>}
+                  {streamUrl ? <img src={streamUrl} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-xs text-white/30">Photo error</div>}
                 </div>
                 <div className="mt-2 flex items-center justify-between">
                   <h4 className="text-xs font-bold text-white truncate">{photo.title || "Untitled Photo"}</h4>
@@ -780,11 +752,52 @@ export default function Social({
             );
           })}
         </div>
+      ) : (
+        /* TEXT POSTS VIEW */
+        <div className="mt-6 space-y-4">
+          {textPosts.map((post) => {
+            const author = authors[post.user_id];
+            const streamUrl = post.telegram_file_id ? `/api/social/${post.media_type === "video" ? "videos" : "photos"}/stream?fileId=${encodeURIComponent(post.telegram_file_id)}` : null;
+            return (
+              <article key={post.id} className="rounded-2xl border border-white/10 bg-[#0c0f17] p-5 shadow-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => onViewProfile?.(post.user_id)} className="h-10 w-10 overflow-hidden rounded-xl bg-white/10 flex items-center justify-center font-bold text-xs">
+                      {authorAvatarSrc(author) ? <img src={authorAvatarSrc(author)!} className="h-full w-full object-cover" /> : authorDisplayName(author).charAt(0)}
+                    </button>
+                    <div>
+                      <h4 className="text-xs font-bold text-white">{authorDisplayName(author)}</h4>
+                      <span className="text-[10px] text-white/40">{timeAgo(post.created_at)}</span>
+                    </div>
+                  </div>
+                  {post.user_id === currentUserId && (
+                    <button onClick={() => deletePost(post.id, "text")} className="text-xs text-red-400 hover:underline">Delete</button>
+                  )}
+                </div>
+                {post.title && <h3 className="mt-4 text-base font-bold text-white">{post.title}</h3>}
+                {post.text_content && <p className="mt-2 text-xs leading-relaxed text-white/80 whitespace-pre-line">{post.text_content}</p>}
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      {/* LOAD MORE BUTTON (25 Items at a time) */}
+      {hasMore && activeTab !== "reels" && (
+        <div className="mt-8 text-center">
+          <button
+            onClick={() => loadFeed(true)}
+            disabled={loading}
+            className="rounded-xl border border-white/10 bg-white/5 px-6 py-2.5 text-xs font-bold text-white transition hover:bg-white/10 disabled:opacity-50"
+          >
+            {loading ? "Loading..." : "Load 25 More"}
+          </button>
+        </div>
       )}
 
       {/* TOAST NOTIFICATION */}
       {actionError && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-2xl border border-white/10 bg-[#161b26]/90 px-5 py-2.5 text-xs font-bold text-white shadow-2xl backdrop-blur-xl">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-2xl border border-white/10 bg-[#161b26]/90 px-5 py-2.5 text-xs font-bold text-cyan-400 shadow-2xl backdrop-blur-xl">
           {actionError}
         </div>
       )}
