@@ -1197,41 +1197,105 @@ export default function Dashboard() {
   ============================================================ */
 
   return (
-    <section className="relative w-full max-w-5xl px-4 py-8">
-      {/* HEADER */}
+    <section className="relative w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      {/* PREMIUM HERO HEADER */}
 
-      <div className="mb-8">
-        <p className="eyebrow mb-2">
-          Search and manage your watch activity
-        </p>
+      <div className="relative mb-8 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] p-6 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-8">
+        <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-[var(--accent)]/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 left-1/3 h-48 w-48 rounded-full bg-[var(--accent-2)]/10 blur-3xl" />
 
-        <h2 className="text-3xl font-bold tracking-tight text-white">
-          Watch Dashboard
-        </h2>
+        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--accent-2)] opacity-60" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--accent-2)]" />
+              </span>
+              Your watch space
+            </div>
+
+            <p className="eyebrow mb-2">Search, track & continue</p>
+            <h2 className="text-3xl font-black tracking-tight text-white sm:text-4xl">
+              Watch Dashboard
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/45">
+              Pick up where you left off, track episode progress, and see your
+              watch activity at a glance.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 sm:min-w-[230px]">
+            <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-white/35">
+                Continue
+              </p>
+              <p className="mt-1 text-xl font-bold text-white">
+                {continueWatchingLoading ? "—" : continueWatching.length}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-white/35">
+                Rewatch
+              </p>
+              <p className="mt-1 text-xl font-bold text-white">
+                {loading ? "—" : formatTime(rewatchSeconds)}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* TOTAL WATCH TIME */}
 
-      <div className="glass-panel mb-6 p-6 sm:p-8">
-        <p className="eyebrow">Total Watch Time</p>
+      <div className="group relative mb-6 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.045] p-6 shadow-xl shadow-black/20 backdrop-blur-xl transition duration-300 hover:border-white/15 sm:p-8">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-[var(--accent)]/10 blur-3xl transition duration-500 group-hover:scale-125" />
 
-        <div className="gradient-text mt-2 text-5xl font-black tracking-tight">
-          {loading ? "Loading..." : formatTime(totalSeconds)}
+        <div className="relative flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-lg">
+                ⏱
+              </span>
+              <div>
+                <p className="eyebrow">Total Watch Time</p>
+                <p className="text-xs text-white/30">All tracked sessions</p>
+              </div>
+            </div>
+
+            <div className="gradient-text mt-4 text-5xl font-black tracking-tight sm:text-6xl">
+              {loading ? "Loading..." : formatTime(totalSeconds)}
+            </div>
+
+            <p className="mt-2 text-sm text-white/40">
+              Completed and rewatched runtimes are included.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 sm:min-w-[190px]">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/30">
+              Activity
+            </p>
+            <p className="mt-2 text-sm font-semibold text-white/75">
+              Live synced with Supabase
+            </p>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+              <div className="h-full w-full rounded-full bg-[linear-gradient(90deg,var(--accent)_0%,var(--accent-2)_100%)] opacity-80" />
+            </div>
+          </div>
         </div>
-
-        <p className="mt-2 text-sm text-white/40">
-          Completed and rewatched runtimes are included.
-        </p>
       </div>
 
       {/* CONTINUE WATCHING */}
 
       {(continueWatchingLoading || continueWatching.length > 0) && (
-        <div className="mb-6">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-xl font-bold">
-              Continue Watching
-            </h3>
+        <div className="mb-8 rounded-3xl border border-white/10 bg-white/[0.025] p-4 sm:p-5">
+          <div className="mb-4 flex items-end justify-between gap-4">
+            <div>
+              <p className="eyebrow mb-1">Pick up where you stopped</p>
+              <h3 className="text-2xl font-black tracking-tight text-white">
+                Continue Watching
+              </h3>
+            </div>
 
             {!continueWatchingLoading && (
               <span className="text-sm text-white/40">
@@ -1290,9 +1354,9 @@ export default function Dashboard() {
                     onClick={() =>
                       setSelectedContentId(item.contentId)
                     }
-                    className="glass-panel glass-panel-interactive group relative cursor-pointer overflow-visible"
+                    className="glass-panel glass-panel-interactive group relative cursor-pointer overflow-visible rounded-2xl border border-white/10 shadow-lg shadow-black/20 transition duration-300 hover:-translate-y-1 hover:border-white/20 hover:shadow-2xl hover:shadow-black/30"
                   >
-                    <div className="relative aspect-[2/3] overflow-hidden rounded-t-[var(--radius-lg)] bg-black">
+                    <div className="relative aspect-[2/3] overflow-hidden rounded-t-2xl bg-black">
                       <img
                         src={item.imageUrl || getPlaceholderImage()}
                         alt={item.title}
@@ -1302,7 +1366,7 @@ export default function Dashboard() {
 
                       <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/80 to-transparent" />
 
-                      <div className="absolute left-2 top-2 rounded-full border border-white/15 bg-black/50 px-2 py-1 text-[10px] font-semibold backdrop-blur-md">
+                      <div className="absolute left-2 top-2 rounded-full border border-white/15 bg-black/55 px-2.5 py-1.5 text-[10px] font-semibold shadow-lg backdrop-blur-xl">
                         {CONTINUE_WATCHING_ICONS[item.status]}{" "}
                         {CONTINUE_WATCHING_LABELS[item.status]}
                       </div>
@@ -1317,7 +1381,7 @@ export default function Dashboard() {
                             isMenuOpen ? null : item.contentId,
                           );
                         }}
-                        className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-sm text-white backdrop-blur-md transition hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-black/55 text-sm text-white backdrop-blur-xl transition hover:bg-black/80 hover:border-white/20 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {isUpdating ? (
                           <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" />
@@ -1379,7 +1443,7 @@ export default function Dashboard() {
                             {item.totalEpisodes}
                           </p>
 
-                          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+                          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
                             <div
                               className="h-full rounded-full bg-[linear-gradient(90deg,var(--accent)_0%,var(--accent-2)_100%)] transition-all duration-500"
                               style={{
@@ -1396,7 +1460,7 @@ export default function Dashboard() {
                                 event.stopPropagation();
                                 markNextEpisode(item);
                               }}
-                              className="mt-2 h-8 w-full rounded-[var(--radius-sm)] bg-white text-xs font-semibold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
+                              className="mt-3 h-9 w-full rounded-xl bg-white text-xs font-bold text-black shadow-lg shadow-black/20 transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               {isMarking
                                 ? "Marking..."
@@ -1433,7 +1497,7 @@ export default function Dashboard() {
             return (
               <div
                 key="rewatch-time"
-                className="glass-panel p-5"
+                className="glass-panel group rounded-2xl border border-white/10 p-5 shadow-lg shadow-black/10 transition duration-300 hover:-translate-y-0.5 hover:border-white/15"
               >
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-white">Total Re Watch Time</h3>
@@ -1471,7 +1535,7 @@ export default function Dashboard() {
           return (
             <div
               key={category}
-              className="glass-panel p-5"
+              className="glass-panel group rounded-2xl border border-white/10 p-5 shadow-lg shadow-black/10 transition duration-300 hover:-translate-y-0.5 hover:border-white/15"
             >
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-white">{category}</h3>
@@ -1498,7 +1562,7 @@ export default function Dashboard() {
 
       {/* QURAN READING (today, quran_reading_log) */}
 
-      <div className="glass-panel mt-4 p-5">
+      <div className="glass-panel mt-5 rounded-2xl border border-white/10 p-5 shadow-lg shadow-black/10">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-white">
             🕌 Quran Reading Today
@@ -1539,11 +1603,13 @@ export default function Dashboard() {
 
       {/* WATCH TIME CHART (weekly breakdown) */}
 
-      <WatchTimeChart />
+      <div className="mt-6 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.025] p-1 shadow-xl shadow-black/10">
+        <WatchTimeChart />
+      </div>
 
       {/* LIVE STATUS */}
 
-      <div className="glass-panel mt-6 border-[var(--accent-2-soft)] p-4">
+      <div className="glass-panel mt-6 rounded-2xl border-[var(--accent-2-soft)] bg-[var(--accent-2)]/[0.03] p-5 shadow-lg shadow-black/10">
         <div className="flex items-center gap-2">
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--accent-2)] opacity-75" />
@@ -1561,11 +1627,11 @@ export default function Dashboard() {
       {/* DETAILS MODAL */}
       {selectedItem && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-md"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-xl"
           onClick={() => setSelectedContentId(null)}
         >
           <div
-            className="glass-panel max-h-[90vh] w-full max-w-3xl overflow-y-auto !rounded-[var(--radius-lg)] bg-[#0d0d16]/95"
+            className="glass-panel max-h-[90vh] w-full max-w-3xl overflow-y-auto !rounded-3xl border border-white/10 bg-[#0d0d16]/95 shadow-2xl shadow-black/50"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="grid md:grid-cols-[220px_1fr]">
