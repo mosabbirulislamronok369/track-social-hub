@@ -1,6 +1,0 @@
-name = "track-social-telegram-upload"
-main = "index.ts"
-compatibility_date = "2026-09-11"
-
-[vars]
-TELEGRAM_STORAGE_CHAT_ID = "-1004316050992"

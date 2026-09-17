@@ -151,8 +151,6 @@ export default function Social({
   onViewProfile?: (userId: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const reelsContainerRef = useRef<HTMLDivElement>(null);
-  const reelVideoRefs = useRef<Map<number, HTMLVideoElement>>(new Map());
 
   const [textPosts, setTextPosts] = useState<SocialTextPost[]>([]);
   const [videos, setVideos] = useState<SocialVideo[]>([]);
@@ -173,23 +171,11 @@ export default function Social({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"text" | "videos" | "photos">("text");
 
-  const [reelsOpen, setReelsOpen] = useState(false);
-  const [activeReelIndex, setActiveReelIndex] = useState(0);
-
-  const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const [currentReactions, setCurrentReactions] = useState<Record<string, ReactionType | null>>({});
-  const [reactionCounts, setReactionCounts] = useState<Record<string, Record<ReactionType, number>>>({});
   const [openReactionId, setOpenReactionId] = useState<string | null>(null);
 
-  const [loadingMoreText, setLoadingMoreText] = useState(false);
-  const [loadingMoreVideos, setLoadingMoreVideos] = useState(false);
-  const [loadingMorePhotos, setLoadingMorePhotos] = useState(false);
-  const [hasMoreText, setHasMoreText] = useState(false);
-  const [hasMoreVideos, setHasMoreVideos] = useState(false);
-  const [hasMorePhotos, setHasMorePhotos] = useState(false);
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
-
   const [authors, setAuthors] = useState<Record<string, AuthorInfo>>({});
   const [openComments, setOpenComments] = useState<string | null>(null);
   const [comments, setComments] = useState<Record<string, CommentRow[]>>({});
@@ -207,22 +193,14 @@ export default function Social({
       { data: videoData, error: videoError },
       { data: photoData, error: photoError },
     ] = await Promise.all([
-      supabase.from("social_texts").select("*").order("created_at", { ascending: false }).limit(PAGE_SIZE + 1),
-      supabase.from("social_videos").select("*").order("created_at", { ascending: false }).limit(PAGE_SIZE + 1),
-      supabase.from("social_photos").select("*").order("created_at", { ascending: false }).limit(PAGE_SIZE + 1),
+      supabase.from("social_texts").select("*").order("created_at", { ascending: false }).limit(PAGE_SIZE),
+      supabase.from("social_videos").select("*").order("created_at", { ascending: false }).limit(PAGE_SIZE),
+      supabase.from("social_photos").select("*").order("created_at", { ascending: false }).limit(PAGE_SIZE),
     ]);
 
-    const nextTexts = (textData ?? []) as SocialTextPost[];
-    const nextVideos = (videoData ?? []) as SocialVideo[];
-    const nextPhotos = (photoData ?? []) as SocialPhoto[];
-
-    setTextPosts(nextTexts.slice(0, PAGE_SIZE));
-    setVideos(nextVideos.slice(0, PAGE_SIZE));
-    setPhotos(nextPhotos.slice(0, PAGE_SIZE));
-
-    setHasMoreText(nextTexts.length > PAGE_SIZE);
-    setHasMoreVideos(nextVideos.length > PAGE_SIZE);
-    setHasMorePhotos(nextPhotos.length > PAGE_SIZE);
+    setTextPosts((textData ?? []) as SocialTextPost[]);
+    setVideos((videoData ?? []) as SocialVideo[]);
+    setPhotos((photoData ?? []) as SocialPhoto[]);
 
     if (textError && videoError && photoError) setError("Error loading feed.");
     setLoading(false);
@@ -278,20 +256,17 @@ export default function Social({
 
     const nextLikes: Record<string, number> = {};
     const nextComments: Record<string, number> = {};
-    const nextReactionCounts: Record<string, Record<ReactionType, number>> = {};
     const nextMine: Record<string, ReactionType | null> = {};
 
     for (const id of ids) {
       nextLikes[id] = 0;
       nextComments[id] = 0;
-      nextReactionCounts[id] = { like: 0, love: 0, haha: 0, wow: 0, angry: 0 };
       nextMine[id] = null;
     }
 
     for (const row of likes ?? []) {
       const reaction: ReactionType = REACTIONS.some((i) => i.key === row.reaction) ? row.reaction : "like";
       nextLikes[row.video_id] = (nextLikes[row.video_id] ?? 0) + 1;
-      nextReactionCounts[row.video_id][reaction] += 1;
       if (userId && row.user_id === userId) nextMine[row.video_id] = reaction;
     }
 
@@ -302,7 +277,6 @@ export default function Social({
     setLikeCounts((prev) => ({ ...prev, ...nextLikes }));
     setCommentCounts((prev) => ({ ...prev, ...nextComments }));
     setCurrentReactions((prev) => ({ ...prev, ...nextMine }));
-    setReactionCounts((prev) => ({ ...prev, ...nextReactionCounts }));
   }, []);
 
   useEffect(() => {
@@ -401,15 +375,38 @@ export default function Social({
         title: title.trim() || null,
         text_content: textContent.trim() || null,
         media_type: file ? detectMediaKind(file) : null,
-        storage: storageData,
+        telegram_chat_id: storageData?.telegram_chat_id || null,
+        telegram_file_id: storageData?.telegram_file_id || null,
+        telegram_message_id: storageData?.telegram_message_id || null,
+        mime_type: file?.type || null,
+        original_filename: file?.name || null,
+        file_size: file?.size || null,
       };
 
       if (activeTab === "videos") {
         metadataEndpoint = "/api/social/videos/metadata";
-        payload = { title: title.trim() || file?.name, caption: caption.trim() || null, storage: storageData };
+        payload = {
+          title: title.trim() || file?.name,
+          caption: caption.trim() || null,
+          telegram_chat_id: storageData?.telegram_chat_id || null,
+          telegram_file_id: storageData?.telegram_file_id || null,
+          telegram_message_id: storageData?.telegram_message_id || null,
+          mime_type: file?.type || null,
+          original_filename: file?.name || null,
+          file_size: file?.size || null,
+        };
       } else if (activeTab === "photos") {
         metadataEndpoint = "/api/social/photos/metadata";
-        payload = { title: title.trim() || file?.name, caption: caption.trim() || null, storage: storageData };
+        payload = {
+          title: title.trim() || file?.name,
+          caption: caption.trim() || null,
+          telegram_chat_id: storageData?.telegram_chat_id || null,
+          telegram_file_id: storageData?.telegram_file_id || null,
+          telegram_message_id: storageData?.telegram_message_id || null,
+          mime_type: file?.type || null,
+          original_filename: file?.name || null,
+          file_size: file?.size || null,
+        };
       }
 
       const res = await fetch(metadataEndpoint, {

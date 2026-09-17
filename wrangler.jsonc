@@ -28,5 +28,10 @@
       "binding": "VINEXT_KV_CACHE",
       "id": "c71b463f3bc54c2494f27c114a391832"
     }
-  ]
+  ],
+  "vars": {
+    "TELEGRAM_STORAGE_CHAT_ID": "-1004316050992",
+    "NEXT_PUBLIC_TELEGRAM_UPLOAD_SECRET": "a6d689a622c2412190d548b5c28cf055",
+    "NEXT_PUBLIC_SUPABASE_URL": "https://ztsjofhmmryqpdfsdyqr.supabase.co"
+  }
 }
