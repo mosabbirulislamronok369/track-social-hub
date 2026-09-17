@@ -370,42 +370,38 @@ export default function Social({
         });
       }
 
+      // Telegram Storage fields
+      const telegramFields = {
+        telegram_chat_id: storageData?.telegram_chat_id || null,
+        telegram_file_id: storageData?.telegram_file_id || null,
+        telegram_message_id: storageData?.telegram_message_id || null,
+        mime_type: file?.type || storageData?.mime_type || null,
+        original_filename: file?.name || storageData?.original_filename || null,
+        file_size: file?.size || storageData?.file_size || null,
+        storage: storageData,
+      };
+
       let metadataEndpoint = "/api/social/texts/metadata";
       let payload: any = {
         title: title.trim() || null,
         text_content: textContent.trim() || null,
         media_type: file ? detectMediaKind(file) : null,
-        telegram_chat_id: storageData?.telegram_chat_id || null,
-        telegram_file_id: storageData?.telegram_file_id || null,
-        telegram_message_id: storageData?.telegram_message_id || null,
-        mime_type: file?.type || null,
-        original_filename: file?.name || null,
-        file_size: file?.size || null,
+        ...telegramFields,
       };
 
       if (activeTab === "videos") {
         metadataEndpoint = "/api/social/videos/metadata";
         payload = {
-          title: title.trim() || file?.name,
+          title: title.trim() || file?.name || "Untitled Video",
           caption: caption.trim() || null,
-          telegram_chat_id: storageData?.telegram_chat_id || null,
-          telegram_file_id: storageData?.telegram_file_id || null,
-          telegram_message_id: storageData?.telegram_message_id || null,
-          mime_type: file?.type || null,
-          original_filename: file?.name || null,
-          file_size: file?.size || null,
+          ...telegramFields,
         };
       } else if (activeTab === "photos") {
         metadataEndpoint = "/api/social/photos/metadata";
         payload = {
-          title: title.trim() || file?.name,
+          title: title.trim() || file?.name || "Untitled Photo",
           caption: caption.trim() || null,
-          telegram_chat_id: storageData?.telegram_chat_id || null,
-          telegram_file_id: storageData?.telegram_file_id || null,
-          telegram_message_id: storageData?.telegram_message_id || null,
-          mime_type: file?.type || null,
-          original_filename: file?.name || null,
-          file_size: file?.size || null,
+          ...telegramFields,
         };
       }
 
