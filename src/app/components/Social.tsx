@@ -83,6 +83,17 @@ type AuthorInfo = {
   avatar_telegram_file_id: string | null;
 };
 
+// খারাপ/অশ্লীল শব্দ সনাক্তকরণের লিস্ট (প্রয়োজনে ব্যাকএন্ড বা এআই ফিল্টার যুক্ত করতে পারেন)
+const BANNED_WORDS = [
+  "sex", "porn", "nude", "naked", "adult", "xvideo", "hentai", "xxx", "bastard"
+];
+
+function containsInappropriateContent(text: string): boolean {
+  if (!text) return false;
+  const lowerText = text.toLowerCase();
+  return BANNED_WORDS.some((word) => lowerText.includes(word));
+}
+
 function authorAvatarSrc(info: AuthorInfo | undefined) {
   if (!info) return null;
   if (info.avatar_telegram_file_id) {
@@ -175,14 +186,9 @@ export default function Social({
 
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const [currentReactions, setCurrentReactions] = useState<Record<string, ReactionType | null>>({});
-  const [openReactionId, setOpenReactionId] = useState<string | null>(null);
 
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [authors, setAuthors] = useState<Record<string, AuthorInfo>>({});
-  const [openComments, setOpenComments] = useState<string | null>(null);
-  const [comments, setComments] = useState<Record<string, CommentRow[]>>({});
-  const [commentDraft, setCommentDraft] = useState("");
-  const [commentLoading, setCommentLoading] = useState(false);
   const [actionError, setActionError] = useState("");
 
   /* FETCH FEED (PAGINATED 25 ITEMS) */
@@ -277,46 +283,6 @@ export default function Social({
     }
   };
 
-  /* STATS (LIKES & COMMENTS) */
-  const loadSocialStats = useCallback(async (items: { id: string }[], userId: string | null) => {
-    if (!items.length) return;
-    const ids = items.map((item) => item.id);
-
-    const [{ data: likes }, { data: commentsData }] = await Promise.all([
-      supabase.from("social_likes").select("video_id,user_id,reaction").in("video_id", ids),
-      supabase.from("social_comments").select("video_id").in("video_id", ids),
-    ]);
-
-    const nextLikes: Record<string, number> = {};
-    const nextComments: Record<string, number> = {};
-    const nextMine: Record<string, ReactionType | null> = {};
-
-    for (const id of ids) {
-      nextLikes[id] = 0;
-      nextComments[id] = 0;
-      nextMine[id] = null;
-    }
-
-    for (const row of likes ?? []) {
-      const reaction: ReactionType = REACTIONS.some((i) => i.key === row.reaction) ? row.reaction : "like";
-      nextLikes[row.video_id] = (nextLikes[row.video_id] ?? 0) + 1;
-      if (userId && row.user_id === userId) nextMine[row.video_id] = reaction;
-    }
-
-    for (const row of commentsData ?? []) {
-      nextComments[row.video_id] = (nextComments[row.video_id] ?? 0) + 1;
-    }
-
-    setLikeCounts((prev) => ({ ...prev, ...nextLikes }));
-    setCommentCounts((prev) => ({ ...prev, ...nextComments }));
-    setCurrentReactions((prev) => ({ ...prev, ...nextMine }));
-  }, []);
-
-  useEffect(() => {
-    const allItems = [...textPosts, ...videos, ...photos];
-    if (allItems.length) loadSocialStats(allItems, currentUserId);
-  }, [textPosts, videos, photos, currentUserId, loadSocialStats]);
-
   /* FILE HANDLING */
   function chooseFile(nextFile: File | null) {
     if (uploading) return;
@@ -345,9 +311,16 @@ export default function Social({
     setFile(nextFile);
   }
 
-  /* UPLOAD & PUBLISH */
+  /* UPLOAD & PUBLISH WITH TOKEN FIX & CONTENT FILTER */
   async function upload() {
     if (uploading) return;
+
+    // ১. খারাপ/অশ্লীল কনটেন্ট ফিল্টার
+    const combinedText = `${title} ${caption} ${textContent}`;
+    if (containsInappropriateContent(combinedText)) {
+      setError("আপনার পোস্টে অনাকাঙ্ক্ষিত বা অশ্লীল বিষয়বস্তু শনাক্ত হয়েছে। অনুগ্রহ করে ভদ্র কনটেন্ট প্রকাশ করুন।");
+      return;
+    }
 
     if (!textContent.trim() && !file && activeTab === "text") {
       setError("Please write some content or upload a file.");
@@ -364,15 +337,13 @@ export default function Social({
     setError("");
 
     try {
-      const { data: refreshData } = await supabase.auth.refreshSession();
-      let session = refreshData.session;
+      // 🔒 ২. টোকেন ইস্যু ফিক্স (getSession ব্যবহার)
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData?.session;
 
-      if (!session) {
-        const { data: currentSessionData } = await supabase.auth.getSession();
-        session = currentSessionData.session;
+      if (!session?.access_token) {
+        throw new Error("আপনার লগইন সেশনের মেয়াদ শেষ। সাইন-আউট করে পুনরায় লগইন করুন।");
       }
-
-      if (!session?.access_token) throw new Error("Please login to post.");
 
       let storageData: any = null;
 
@@ -446,7 +417,10 @@ export default function Social({
 
       const res = await fetch(metadataEndpoint, {
         method: "POST",
-        headers: { "content-type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        headers: { 
+          "Content-Type": "application/json", 
+          Authorization: `Bearer ${session.access_token}` 
+        },
         body: JSON.stringify(payload),
       });
 
@@ -467,7 +441,7 @@ export default function Social({
     }
   }
 
-  /* DELETE */
+  /* DELETE POST */
   async function deletePost(id: string, type: "text" | "video" | "photo") {
     if (!confirm("Are you sure you want to delete this post?")) return;
     const tableMap = { text: "social_texts", video: "social_videos", photo: "social_photos" };
@@ -479,78 +453,6 @@ export default function Social({
       if (type === "text") setTextPosts((prev) => prev.filter((p) => p.id !== id));
       if (type === "video") setVideos((prev) => prev.filter((p) => p.id !== id));
       if (type === "photo") setPhotos((prev) => prev.filter((p) => p.id !== id));
-    }
-  }
-
-  /* REACTION HANDLER */
-  async function setReaction(postId: string, reaction: ReactionType | null) {
-    if (!currentUserId) { setActionError("Please login to react."); return; }
-    const previous = currentReactions[postId] ?? null;
-
-    setCurrentReactions((prev) => ({ ...prev, [postId]: reaction }));
-    setLikeCounts((prev) => ({
-      ...prev,
-      [postId]: Math.max(0, (prev[postId] ?? 0) + (previous ? 0 : 1) - (reaction ? 0 : 1)),
-    }));
-    setOpenReactionId(null);
-
-    const result = reaction
-      ? await supabase.from("social_likes").upsert({ video_id: postId, user_id: currentUserId, reaction }, { onConflict: "video_id,user_id" })
-      : await supabase.from("social_likes").delete().eq("video_id", postId).eq("user_id", currentUserId);
-
-    if (result.error) setActionError(result.error.message);
-  }
-
-  function toggleLike(postId: string) {
-    const current = currentReactions[postId];
-    setReaction(postId, current ? null : "like");
-  }
-
-  /* COMMENTS HANDLER */
-  async function toggleComments(postId: string) {
-    if (openComments === postId) {
-      setOpenComments(null);
-      return;
-    }
-    setOpenComments(postId);
-
-    const { data } = await supabase
-      .from("social_comments")
-      .select("id,video_id,user_id,body,created_at")
-      .eq("video_id", postId)
-      .order("created_at", { ascending: true });
-
-    setComments((prev) => ({ ...prev, [postId]: (data ?? []) as CommentRow[] }));
-  }
-
-  async function addComment(postId: string) {
-    const body = commentDraft.trim();
-    if (!body || commentLoading || !currentUserId) return;
-
-    setCommentLoading(true);
-    const { data, error: insertError } = await supabase
-      .from("social_comments")
-      .insert({ video_id: postId, user_id: currentUserId, body })
-      .select()
-      .single();
-
-    if (!insertError && data) {
-      setComments((prev) => ({ ...prev, [postId]: [...(prev[postId] ?? []), data as CommentRow] }));
-      setCommentCounts((prev) => ({ ...prev, [postId]: (prev[postId] ?? 0) + 1 }));
-      setCommentDraft("");
-    }
-    setCommentLoading(false);
-  }
-
-  /* SHARE HANDLER */
-  async function sharePost(postId: string) {
-    const url = `${window.location.origin}/?socialPost=${encodeURIComponent(postId)}`;
-    if (navigator.share) {
-      await navigator.share({ title: "Social Hub Post", url });
-    } else {
-      await navigator.clipboard.writeText(url);
-      setActionError("Link copied to clipboard!");
-      setTimeout(() => setActionError(""), 2000);
     }
   }
 
@@ -598,7 +500,7 @@ export default function Social({
             />
           )}
 
-          {/* DRAG AND DROP ZONE */}
+          {/* DRAG AND DROP ZONE WITH INSTRUCTIONS */}
           <div
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
@@ -610,7 +512,9 @@ export default function Social({
           >
             <input ref={inputRef} type="file" accept="image/*,video/*,application/pdf,audio/*" onChange={(e) => chooseFile(e.target.files?.[0] ?? null)} className="hidden" />
             {!file ? (
-              <p className="text-xs font-medium text-white/50">✦ Drag & drop or <span className="text-cyan-400 underline">Browse File</span> (Photo, Video, PDF, Voice)</p>
+              <p className="text-xs font-medium text-white/60">
+                ✦ Drag & drop or <span className="text-cyan-400 underline">Browse File</span> (Photo, Video, PDF, Voice) — সর্বোচ্চ ২০MB ফাইল আপলোড করতে পারবেন। <span className="text-red-400 font-bold">(খারাপ বা অশ্লীল পোস্ট করবেন না)</span>
+              </p>
             ) : (
               <div onClick={(e) => e.stopPropagation()} className="flex items-center justify-between text-xs text-white">
                 <span className="truncate font-bold">📎 {file.name} ({formatBytes(file.size)})</span>
@@ -670,8 +574,8 @@ export default function Social({
           ))}
         </div>
       ) : activeTab === "reels" ? (
-        /* REELS SNAP-SCROLL VIEW */
-        <div className="mt-6 h-[75vh] w-full snap-y snap-mandatory overflow-y-scroll rounded-3xl border border-white/10 bg-black shadow-2xl">
+        /* REELS SNAP-SCROLL VIEW WITH ORIGINAL ASPECT RATIO */
+        <div className="mt-6 h-[80vh] w-full snap-y snap-mandatory overflow-y-scroll rounded-3xl border border-white/10 bg-black shadow-2xl">
           {videos.map((video) => {
             const streamUrl = video.telegram_file_id
               ? `/api/social/videos/stream?fileId=${encodeURIComponent(video.telegram_file_id)}`
@@ -680,7 +584,13 @@ export default function Social({
             return (
               <div key={video.id} className="relative h-full w-full snap-start flex items-center justify-center bg-black">
                 {streamUrl ? (
-                  <video src={streamUrl} controls loop playsInline className="h-full w-full object-contain" />
+                  <video 
+                    src={streamUrl} 
+                    controls 
+                    loop 
+                    playsInline 
+                    className="max-h-full max-w-full object-contain" 
+                  />
                 ) : (
                   <p className="text-xs text-white/40">Stream Error</p>
                 )}
@@ -708,14 +618,18 @@ export default function Social({
           })}
         </div>
       ) : activeTab === "videos" ? (
-        /* VIDEOS GRID VIEW */
+        /* VIDEOS GRID VIEW WITH ORIGINAL ASPECT RATIO */
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
           {videos.map((video) => {
             const streamUrl = video.telegram_file_id ? `/api/social/videos/stream?fileId=${encodeURIComponent(video.telegram_file_id)}` : null;
             return (
-              <article key={video.id} className="rounded-2xl border border-white/10 bg-[#0c0f17] p-3 shadow-xl">
-                <div className="aspect-video w-full overflow-hidden rounded-xl bg-black">
-                  {streamUrl ? <video src={streamUrl} controls className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-xs text-white/30">Video error</div>}
+              <article key={video.id} className="rounded-2xl border border-white/10 bg-[#0c0f17] p-3 shadow-xl flex flex-col justify-between">
+                <div className="w-full overflow-hidden rounded-xl bg-black flex items-center justify-center" style={{ minHeight: '220px' }}>
+                  {streamUrl ? (
+                    <video src={streamUrl} controls className="max-h-[400px] w-full object-contain" />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-xs text-white/30">Video error</div>
+                  )}
                 </div>
                 <div className="mt-3 flex items-center justify-between">
                   <h4 className="text-xs font-bold text-white truncate">{video.title || "Untitled Video"}</h4>
@@ -739,8 +653,8 @@ export default function Social({
             const streamUrl = photo.telegram_file_id ? `/api/social/photos/stream?fileId=${encodeURIComponent(photo.telegram_file_id)}` : null;
             return (
               <article key={photo.id} className="rounded-2xl border border-white/10 bg-[#0c0f17] p-3 shadow-xl">
-                <div className="aspect-square w-full overflow-hidden rounded-xl bg-black">
-                  {streamUrl ? <img src={streamUrl} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-xs text-white/30">Photo error</div>}
+                <div className="w-full overflow-hidden rounded-xl bg-black flex items-center justify-center min-h-[200px]">
+                  {streamUrl ? <img src={streamUrl} alt="" className="max-h-[350px] w-full object-contain" /> : <div className="flex h-full items-center justify-center text-xs text-white/30">Photo error</div>}
                 </div>
                 <div className="mt-2 flex items-center justify-between">
                   <h4 className="text-xs font-bold text-white truncate">{photo.title || "Untitled Photo"}</h4>
@@ -757,7 +671,6 @@ export default function Social({
         <div className="mt-6 space-y-4">
           {textPosts.map((post) => {
             const author = authors[post.user_id];
-            const streamUrl = post.telegram_file_id ? `/api/social/${post.media_type === "video" ? "videos" : "photos"}/stream?fileId=${encodeURIComponent(post.telegram_file_id)}` : null;
             return (
               <article key={post.id} className="rounded-2xl border border-white/10 bg-[#0c0f17] p-5 shadow-xl">
                 <div className="flex items-center justify-between">
