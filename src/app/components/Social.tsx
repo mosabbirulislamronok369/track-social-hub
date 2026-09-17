@@ -56,25 +56,9 @@ type SocialPhoto = {
   created_at: string;
 };
 
-type CommentRow = {
-  id: string;
-  video_id: string;
-  user_id: string;
-  body: string;
-  created_at: string;
-};
-
 type ReactionType = "like" | "love" | "haha" | "wow" | "angry";
 
 const PAGE_SIZE = 25;
-
-const REACTIONS: { key: ReactionType; emoji: string; label: string }[] = [
-  { key: "like", emoji: "👍", label: "Like" },
-  { key: "love", emoji: "❤️", label: "Love" },
-  { key: "haha", emoji: "😂", label: "Haha" },
-  { key: "wow", emoji: "😮", label: "Wow" },
-  { key: "angry", emoji: "😡", label: "Angry" },
-];
 
 type AuthorInfo = {
   display_name: string | null;
@@ -83,7 +67,7 @@ type AuthorInfo = {
   avatar_telegram_file_id: string | null;
 };
 
-// খারাপ/অশ্লীল শব্দ সনাক্তকরণের লিস্ট (প্রয়োজনে ব্যাকএন্ড বা এআই ফিল্টার যুক্ত করতে পারেন)
+// খারাপ/অশ্লীল শব্দ সনাক্তকরণ
 const BANNED_WORDS = [
   "sex", "porn", "nude", "naked", "adult", "xvideo", "hentai", "xxx", "bastard"
 ];
@@ -155,12 +139,109 @@ function timeAgo(value: string) {
   return new Date(value).toLocaleDateString();
 }
 
+/* ⚡ REEL ITEM COMPONENT WITH LAZY PLAY/PAUSE FOR PERFORMANCE */
+function ReelItem({
+  video,
+  author,
+  onOpenPlayer,
+}: {
+  video: SocialVideo;
+  author?: AuthorInfo;
+  onOpenPlayer: (fileId: string | null, type: "mx" | "vlc" | "telegram" | "copy") => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsPlaying(true);
+          videoRef.current?.play().catch(() => {});
+        } else {
+          setIsPlaying(false);
+          if (videoRef.current) {
+            videoRef.current.pause();
+            videoRef.current.currentTime = 0; // মেমরি ফ্রির জন্য রিসেট
+          }
+        }
+      },
+      { threshold: 0.6 } // ভিডিওটি অন্তত ৬০% দৃশ্যমান হলে প্লে হবে
+    );
+
+    if (containerRef.current) observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const streamUrl = video.telegram_file_id
+    ? `/api/social/videos/stream?fileId=${encodeURIComponent(video.telegram_file_id)}`
+    : null;
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative h-full w-full snap-start snap-always flex items-center justify-center bg-black overflow-hidden"
+    >
+      {streamUrl && isPlaying ? (
+        <video
+          ref={videoRef}
+          src={streamUrl}
+          controls
+          loop
+          playsInline
+          preload="metadata"
+          className="max-h-full max-w-full object-contain"
+        />
+      ) : (
+        <div className="flex flex-col items-center justify-center text-white/40 text-xs">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent mb-2" />
+          <span>Loading Reel...</span>
+        </div>
+      )}
+
+      {/* OVERLAY INFORMATION */}
+      <div className="absolute bottom-6 left-4 right-4 flex items-center justify-between rounded-2xl bg-black/60 p-4 backdrop-blur-md border border-white/10 z-10">
+        <div>
+          <h3 className="text-sm font-bold text-white">{video.title || "Untitled Reel"}</h3>
+          {video.caption && <p className="text-xs text-white/80 mt-1">{video.caption}</p>}
+          <p className="text-[10px] text-white/50 mt-1">
+            {authorDisplayName(author)} • {timeAgo(video.created_at)}
+          </p>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={() => onOpenPlayer(video.telegram_file_id, "mx")}
+            className="rounded-lg bg-blue-600 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-blue-500"
+          >
+            MX
+          </button>
+          <button
+            onClick={() => onOpenPlayer(video.telegram_file_id, "telegram")}
+            className="rounded-lg bg-cyan-500 px-3 py-1.5 text-[10px] font-bold text-black hover:bg-cyan-400"
+          >
+            TG
+          </button>
+          <button
+            onClick={() => onOpenPlayer(video.telegram_file_id, "copy")}
+            className="rounded-lg bg-white/20 px-2 py-1.5 text-[10px] font-bold text-white hover:bg-white/30"
+          >
+            🔗 Link
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Social({
   onViewProfile,
 }: {
   onViewProfile?: (userId: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const reelContainerRef = useRef<HTMLDivElement>(null);
 
   const [textPosts, setTextPosts] = useState<SocialTextPost[]>([]);
   const [videos, setVideos] = useState<SocialVideo[]>([]);
@@ -184,12 +265,11 @@ export default function Social({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"text" | "videos" | "photos" | "reels">("reels");
 
-  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
-  const [currentReactions, setCurrentReactions] = useState<Record<string, ReactionType | null>>({});
-
-  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [authors, setAuthors] = useState<Record<string, AuthorInfo>>({});
   const [actionError, setActionError] = useState("");
+
+  // Reels Modal State
+  const [selectedReelIndex, setSelectedReelIndex] = useState<number | null>(null);
 
   /* FETCH FEED (PAGINATED 25 ITEMS) */
   const loadFeed = useCallback(async (isLoadMore = false) => {
@@ -265,6 +345,16 @@ export default function Social({
     loadFeed(false);
   }, []);
 
+  // Reels modal scroll target alignment
+  useEffect(() => {
+    if (selectedReelIndex !== null && reelContainerRef.current) {
+      const child = reelContainerRef.current.children[selectedReelIndex] as HTMLElement;
+      if (child) {
+        child.scrollIntoView({ behavior: "instant" });
+      }
+    }
+  }, [selectedReelIndex]);
+
   /* OPEN IN LOCAL PLAYER */
   const openInLocalPlayer = (fileId: string | null, type: "mx" | "vlc" | "telegram" | "copy") => {
     if (!fileId) return;
@@ -311,7 +401,7 @@ export default function Social({
     setFile(nextFile);
   }
 
-  /* UPLOAD & PUBLISH WITH TOKEN FIX & CONTENT FILTER */
+  /* UPLOAD & PUBLISH WITH TOKEN AUTO-REFRESH FIX */
   async function upload() {
     if (uploading) return;
 
@@ -337,14 +427,18 @@ export default function Social({
     setError("");
 
     try {
-      // 🔒 ২. টোকেন ইস্যু ফিক্স (getSession ব্যবহার)
-      const { data: sessionData } = await supabase.auth.getSession();
-      const session = sessionData?.session;
+      // 🔒 ২. টোকেন ইস্যু ফিক্স (getSession এবং refreshSession চেক)
+      let { data: { session }, error: sessionErr } = await supabase.auth.getSession();
 
-      if (!session?.access_token) {
-        throw new Error("আপনার লগইন সেশনের মেয়াদ শেষ। সাইন-আউট করে পুনরায় লগইন করুন।");
+      if (!session || sessionErr) {
+        const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+        if (refreshErr || !refreshed.session) {
+          throw new Error("আপনার লগইন সেশনের মেয়াদ শেষ। বামপাশের Sign Out বাটনে ক্লিক করে আবার লগইন করুন।");
+        }
+        session = refreshed.session;
       }
 
+      const token = session.access_token;
       let storageData: any = null;
 
       if (file) {
@@ -419,13 +513,13 @@ export default function Social({
         method: "POST",
         headers: { 
           "Content-Type": "application/json", 
-          Authorization: `Bearer ${session.access_token}` 
+          "Authorization": `Bearer ${token}` 
         },
         body: JSON.stringify(payload),
       });
 
       const data = await res.json();
-      if (!res.ok || !data?.success) throw new Error(data?.error || "Error saving metadata.");
+      if (!res.ok || !data?.success) throw new Error(data?.error || "Invalid or expired token");
 
       setFile(null);
       setTitle("");
@@ -574,51 +668,27 @@ export default function Social({
           ))}
         </div>
       ) : activeTab === "reels" ? (
-        /* REELS SNAP-SCROLL VIEW WITH ORIGINAL ASPECT RATIO */
-        <div className="mt-6 h-[80vh] w-full snap-y snap-mandatory overflow-y-scroll rounded-3xl border border-white/10 bg-black shadow-2xl">
-          {videos.map((video) => {
-            const streamUrl = video.telegram_file_id
-              ? `/api/social/videos/stream?fileId=${encodeURIComponent(video.telegram_file_id)}`
-              : null;
-
-            return (
-              <div key={video.id} className="relative h-full w-full snap-start flex items-center justify-center bg-black">
-                {streamUrl ? (
-                  <video 
-                    src={streamUrl} 
-                    controls 
-                    loop 
-                    playsInline 
-                    className="max-h-full max-w-full object-contain" 
-                  />
-                ) : (
-                  <p className="text-xs text-white/40">Stream Error</p>
-                )}
-
-                <div className="absolute bottom-6 left-6 right-6 flex items-center justify-between rounded-2xl bg-black/60 p-4 backdrop-blur-md border border-white/10">
-                  <div>
-                    <h3 className="text-sm font-bold">{video.title || "Untitled Reel"}</h3>
-                    <p className="text-[10px] text-white/60">{timeAgo(video.created_at)}</p>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button onClick={() => openInLocalPlayer(video.telegram_file_id, "mx")} className="rounded-lg bg-blue-600 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-blue-500">
-                      MX Player
-                    </button>
-                    <button onClick={() => openInLocalPlayer(video.telegram_file_id, "telegram")} className="rounded-lg bg-cyan-500 px-3 py-1.5 text-[10px] font-bold text-black hover:bg-cyan-400">
-                      Telegram
-                    </button>
-                    <button onClick={() => openInLocalPlayer(video.telegram_file_id, "copy")} className="rounded-lg bg-white/20 px-2 py-1.5 text-[10px] font-bold hover:bg-white/30">
-                      🔗 Link
-                    </button>
-                  </div>
-                </div>
+        /* REELS THUMBNAILS GRID (কম মেমোরির জন্য থাম্বনেইল মোড) */
+        <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+          {videos.map((video, idx) => (
+            <div
+              key={video.id}
+              onClick={() => setSelectedReelIndex(idx)}
+              className="group relative cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-[#0c0f17] aspect-[9/16] flex items-center justify-center transition hover:border-cyan-500/50 hover:scale-[1.02]"
+            >
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent z-10" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-cyan-500/20 backdrop-blur-md text-cyan-400 group-hover:scale-110 transition z-10">
+                ▶
               </div>
-            );
-          })}
+              <div className="absolute bottom-3 left-3 right-3 z-20">
+                <p className="text-xs font-bold text-white truncate">{video.title || "Untitled Reel"}</p>
+                <p className="text-[10px] text-white/60">{timeAgo(video.created_at)}</p>
+              </div>
+            </div>
+          ))}
         </div>
       ) : activeTab === "videos" ? (
-        /* VIDEOS GRID VIEW WITH ORIGINAL ASPECT RATIO */
+        /* VIDEOS GRID VIEW */
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
           {videos.map((video) => {
             const streamUrl = video.telegram_file_id ? `/api/social/videos/stream?fileId=${encodeURIComponent(video.telegram_file_id)}` : null;
@@ -695,6 +765,34 @@ export default function Social({
         </div>
       )}
 
+      {/* FULLSCREEN REELS MODAL WITH SMART SNAP SCROLL */}
+      {selectedReelIndex !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-2xl">
+          {/* CLOSE BUTTON */}
+          <button
+            onClick={() => setSelectedReelIndex(null)}
+            className="absolute top-5 right-5 z-50 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white font-bold hover:bg-white/20"
+          >
+            ✕
+          </button>
+
+          {/* SNAP SCROLL CONTAINER */}
+          <div
+            ref={reelContainerRef}
+            className="h-full w-full max-w-md snap-y snap-mandatory overflow-y-scroll scrollbar-none"
+          >
+            {videos.map((video) => (
+              <ReelItem
+                key={video.id}
+                video={video}
+                author={authors[video.user_id]}
+                onOpenPlayer={openInLocalPlayer}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* LOAD MORE BUTTON (25 Items at a time) */}
       {hasMore && activeTab !== "reels" && (
         <div className="mt-8 text-center">
@@ -710,7 +808,7 @@ export default function Social({
 
       {/* TOAST NOTIFICATION */}
       {actionError && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-2xl border border-white/10 bg-[#161b26]/90 px-5 py-2.5 text-xs font-bold text-cyan-400 shadow-2xl backdrop-blur-xl">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-2xl border border-white/10 bg-[#161b26]/90 px-5 py-2.5 text-xs font-bold text-cyan-400 shadow-2xl backdrop-blur-xl z-50">
           {actionError}
         </div>
       )}
