@@ -162,3 +162,220 @@ body {
   background-clip: text;
   color: transparent;
 }
+
+
+/* ============================================================
+   ULTRA PREMIUM UI LAYER — Track Social Hub
+   Safe visual-only overrides; app logic and component behavior
+   remain unchanged.
+============================================================ */
+
+:root {
+  color-scheme: dark;
+  --ink: #070711;
+  --surface: rgba(17, 19, 35, .72);
+  --surface-strong: rgba(25, 27, 48, .88);
+  --border: rgba(184, 174, 255, .14);
+  --border-strong: rgba(191, 181, 255, .32);
+  --accent: #9b87ff;
+  --accent-soft: rgba(155, 135, 255, .18);
+  --accent-2: #55ead0;
+  --accent-2-soft: rgba(85, 234, 208, .13);
+  --gold: #ffd479;
+  --text: #f7f7ff;
+  --text-muted: rgba(235, 235, 255, .62);
+  --text-faint: rgba(235, 235, 255, .38);
+  --radius-lg: 24px;
+  --radius-md: 17px;
+  --radius-sm: 12px;
+}
+
+html {
+  background: #070711;
+  scroll-behavior: smooth;
+  scrollbar-gutter: stable;
+}
+
+body {
+  min-height: 100%;
+  background:
+    radial-gradient(ellipse at 12% 0%, rgba(104, 75, 220, .14), transparent 34rem),
+    radial-gradient(ellipse at 94% 85%, rgba(25, 194, 170, .09), transparent 32rem),
+    #070711;
+  color: var(--text);
+  font-family: var(--font-geist-sans), Inter, ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -.012em;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  color: #fff;
+  background: rgba(132, 105, 255, .55);
+}
+
+:focus-visible {
+  outline: 2px solid rgba(85, 234, 208, .9);
+  outline-offset: 3px;
+}
+
+button, input, textarea, select {
+  font: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:not(:disabled) {
+  transition:
+    color .2s ease,
+    background-color .2s ease,
+    border-color .2s ease,
+    box-shadow .25s ease,
+    transform .25s cubic-bezier(.2,.8,.2,1);
+}
+
+button:active:not(:disabled) {
+  transform: scale(.975);
+}
+
+.aurora-bg {
+  background:
+    radial-gradient(ellipse at 50% -20%, rgba(120, 94, 255, .09), transparent 52%);
+}
+
+.aurora-bg::before {
+  width: 54vw;
+  height: 54vw;
+  top: -25vw;
+  left: -12vw;
+  background: #7558ff;
+  opacity: .19;
+  filter: blur(145px);
+  animation: aurora-drift 22s ease-in-out infinite alternate;
+}
+
+.aurora-bg::after {
+  width: 50vw;
+  height: 50vw;
+  right: -18vw;
+  bottom: -28vw;
+  background: #18cdb2;
+  opacity: .12;
+  filter: blur(150px);
+  animation: aurora-drift 26s ease-in-out infinite alternate-reverse;
+}
+
+.glass-panel {
+  border-color: rgba(187, 178, 255, .13);
+  background:
+    linear-gradient(145deg, rgba(255,255,255,.065), rgba(255,255,255,.018) 55%),
+    rgba(14, 15, 29, .72);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.065) inset,
+    0 16px 48px rgba(0,0,0,.22),
+    0 0 0 1px rgba(128,108,255,.025);
+  backdrop-filter: blur(22px) saturate(135%);
+  -webkit-backdrop-filter: blur(22px) saturate(135%);
+}
+
+.glass-panel:hover {
+  border-color: rgba(187, 178, 255, .3);
+}
+
+.glass-panel-interactive:hover {
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.09) inset,
+    0 24px 58px rgba(0,0,0,.34),
+    0 0 32px rgba(124,92,252,.1);
+}
+
+.gradient-text {
+  background: linear-gradient(105deg, #c5baff 2%, #8f7aff 43%, #65f0d5 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 24px rgba(139, 112, 255, .14));
+}
+
+.eyebrow {
+  color: rgba(202, 197, 239, .56);
+  letter-spacing: .19em;
+}
+
+/* Give existing dashboard surfaces a more intentional premium finish. */
+main .rounded-3xl.border,
+main .rounded-2xl.border {
+  border-color: rgba(188, 179, 255, .13);
+  box-shadow: 0 1px 0 rgba(255,255,255,.035) inset;
+}
+
+main .rounded-3xl.border.bg-white\/\[0\.035\],
+main .rounded-3xl.border.bg-white\/\[0\.045\],
+main .rounded-3xl.border.bg-white\/\[0\.025\] {
+  background-image: linear-gradient(135deg, rgba(255,255,255,.035), transparent 60%);
+}
+
+main h1, main h2, main h3 {
+  text-wrap: balance;
+}
+
+main p {
+  text-wrap: pretty;
+}
+
+/* Form controls: refined, readable, consistent. */
+input:not([type="checkbox"]):not([type="radio"]),
+textarea,
+select {
+  color: #f7f7ff;
+  border-color: rgba(185, 176, 255, .18);
+  background-color: rgba(8, 9, 20, .72);
+  border-radius: 12px;
+  transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):focus,
+textarea:focus,
+select:focus {
+  border-color: rgba(155, 135, 255, .7);
+  box-shadow: 0 0 0 4px rgba(124, 92, 252, .12);
+  outline: none;
+}
+
+input::placeholder, textarea::placeholder {
+  color: rgba(230, 229, 250, .32);
+}
+
+/* A polished, low-contrast scrollbar. */
+* {
+  scrollbar-color: rgba(165, 151, 255, .25) transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(155,135,255,.38), rgba(85,234,208,.24));
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+@keyframes aurora-drift {
+  from { transform: translate3d(-2%, -1%, 0) scale(1); }
+  to { transform: translate3d(4%, 3%, 0) scale(1.12); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .aurora-bg::before, .aurora-bg::after {
+    width: 100vw;
+    height: 100vw;
+    filter: blur(100px);
+  }
+}
