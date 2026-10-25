@@ -14,7 +14,6 @@ export type SidebarSection =
   | "islamic"
   | "countdown"
   | "favourites"
-  | "social";
 
 type NavItem = {
   id: SidebarSection;
@@ -315,7 +314,6 @@ const NAV_ITEMS: NavItem[] = [
   { id: "leaderboard", label: "Leaderboard", icon: <IconLeaderboard /> },
   { id: "recommended", label: "Recommended", icon: <IconGift /> },
   { id: "favourites", label: "Favourites", icon: <IconFavourite /> },
-  { id: "social", label: "Social", icon: <IconSocial /> },
   { id: "watchlist", label: "Watchlist", icon: <IconWatchlist /> },
   { id: "ratings", label: "Ratings", icon: <IconRating /> },
   { id: "profile", label: "Profile", icon: <IconProfile /> },

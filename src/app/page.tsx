@@ -1,57 +1,39 @@
 "use client";
 
-import RecommendedPage from "./components/RecommendedPage";
-import Leaderboard from "./components/Leaderboard";
-import WatchEngine from "./components/WatchEngine";
-import Dashboard from "./components/Dashboard";
-import UniversalBrowser from "./components/UniversalBrowser";
 import { useEffect, useState } from "react";
 import { supabase } from "./lib/supabase";
-import Login from "./components/Login";
+
+// Components
 import Sidebar, { SidebarSection } from "./components/Sidebar";
-import MALImport from "./components/MALImport";
-import TMDBImport from "./components/TMDBImport";
-import IMDBImport from "./components/IMDBImport";
-import PrivateWatchlist from "./components/PrivateWatchlist";
+import Login from "./components/Login";
+import Dashboard from "./components/Dashboard";
+import UniversalBrowser from "./components/UniversalBrowser";
+import FavouriteList from "./components/FavouriteList";
 import RatingBoard from "./components/RatingBoard";
+import Leaderboard from "./components/Leaderboard";
+import RecommendedPage from "./components/RecommendedPage";
 import Profile from "./components/Profile";
 import IslamicTrack from "./components/IslamicTrack";
 import EventCountdown from "./components/EventCountdown";
-import FavouriteList from "./components/FavouriteList";
-import Social from "./components/Social";
-import SocialProfile from "./components/SocialProfile";
-
-type ImportSource = "mal" | "tmdb" | "imdb";
-
-const IMPORT_TABS: { id: ImportSource; label: string }[] = [
-  { id: "mal", label: "MyAnimeList" },
-  { id: "tmdb", label: "TMDB" },
-  { id: "imdb", label: "IMDb" },
-];
+import PrivateWatchlist from "./components/PrivateWatchlist";
+import MALImport from "./components/MALImport";
+import IMDBImport from "./components/IMDBImport";
+import TMDBImport from "./components/TMDBImport";
 
 export default function Home() {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeSection, setActiveSection] =
-    useState<SidebarSection>("dashboard");
-  const [importTab, setImportTab] = useState<ImportSource>("mal");
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [socialProfileUserId, setSocialProfileUserId] = useState<
-    string | null
-  >(null);
+  const [activeSection, setActiveSection] = useState<SidebarSection>("dashboard");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    if (activeSection !== "social") {
-      setSocialProfileUserId(null);
-    }
-  }, [activeSection]);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
+    // Check active session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
       setLoading(false);
     });
 
+    // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -61,11 +43,58 @@ export default function Home() {
     return () => subscription.unsubscribe();
   }, []);
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+  };
+
+  const renderContent = () => {
+    switch (activeSection) {
+      case "dashboard":
+        return <Dashboard />;
+      case "browse":
+        return <UniversalBrowser />;
+      case "watchlist":
+        return <PrivateWatchlist />;
+      case "favourites":
+        return <FavouriteList />;
+      case "ratings":
+        return <RatingBoard />;
+      case "leaderboard":
+        return <Leaderboard />;
+      case "recommended":
+        return <RecommendedPage />;
+      case "profile":
+        return <Profile />;
+      case "islamic":
+        return <IslamicTrack />;
+      case "countdown":
+        return <EventCountdown />;
+      case "import":
+        return (
+          <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
+            <h1 className="text-3xl font-bold text-white mb-6">Import Content</h1>
+            <div className="grid gap-8">
+              <MALImport />
+              <IMDBImport />
+              <TMDBImport />
+            </div>
+          </div>
+        );
+      // "social" কেসটি সম্পূর্ণ বাদ দেওয়া হয়েছে
+      default:
+        return <Dashboard />;
+    }
+  };
+
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#070711] text-white flex items-center justify-center">
-        Loading...
-      </main>
+      <div className="flex h-screen items-center justify-center bg-[#070711] text-white">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-purple-500"></div>
+          <p className="text-sm text-white/50">Loading Track Social Hub...</p>
+        </div>
+      </div>
     );
   }
 
@@ -73,139 +102,39 @@ export default function Home() {
     return <Login />;
   }
 
-  async function handleSignOut() {
-    await supabase.auth.signOut();
-  }
-
   return (
-    <main className="relative flex min-h-screen bg-[#05050a] text-white">
-      <div className="aurora-bg" />
-
+    <div className="flex min-h-screen bg-[#070711] text-white">
       <Sidebar
         active={activeSection}
         onSelect={setActiveSection}
         userEmail={session.user.email}
         onSignOut={handleSignOut}
-        mobileOpen={mobileSidebarOpen}
-        onMobileClose={() => setMobileSidebarOpen(false)}
+        mobileOpen={mobileMenuOpen}
+        onMobileClose={() => setMobileMenuOpen(false)}
       />
 
-      <div className="relative z-10 flex-1 overflow-y-auto">
-        {/* MOBILE TOP BAR — only shown below the md breakpoint,
-            since the sidebar is permanently visible from md up. */}
-        <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-white/[0.07] bg-[#05050a]/90 px-4 py-3 backdrop-blur-xl md:hidden">
+      <main className="flex-1 overflow-x-hidden">
+        {/* Top mobile header (optional, for hamburger menu) */}
+        <div className="flex items-center justify-between p-4 md:hidden border-b border-white/10">
+          <div className="flex items-center gap-2">
+             <span className="text-xl font-black bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-500">
+               TSH
+             </span>
+          </div>
           <button
-            type="button"
-            onClick={() => setMobileSidebarOpen(true)}
-            aria-label="Open menu"
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-white/70 transition hover:bg-white/[0.06] hover:text-white"
+            onClick={() => setMobileMenuOpen(true)}
+            className="rounded-lg p-2 text-white/50 hover:bg-white/5 hover:text-white"
           >
-            <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
-              <path
-                d="M4 6h16M4 12h16M4 18h16"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              />
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-
-          <span className="text-sm font-bold tracking-tight text-white">
-            track-social-hub
-          </span>
         </div>
 
-        {/* Tracks overall app usage regardless of which
-            section is active. */}
-        <div className="mx-auto w-full max-w-6xl px-4 pt-6">
-          <WatchEngine contentId="dashboard" category="Private" />
+        <div className="pb-20">
+          {renderContent()}
         </div>
-
-        {activeSection === "dashboard" && (
-          <div className="mx-auto w-full max-w-6xl px-4 pb-10">
-            <Dashboard />
-          </div>
-        )}
-
-        {activeSection === "islamic" && <IslamicTrack />}
-
-        {activeSection === "countdown" && (
-          <div className="mx-auto w-full max-w-6xl px-4 pb-10">
-            <EventCountdown />
-          </div>
-        )}
-
-        {activeSection === "browse" && <UniversalBrowser />}
-
-      {activeSection === "recommended" && <RecommendedPage />}
-
-        {activeSection === "leaderboard" && <Leaderboard />}
-
-        {activeSection === "favourites" && <FavouriteList />}
-
-        {activeSection === "watchlist" && (
-          <div className="mx-auto w-full max-w-6xl px-4 py-10">
-            <PrivateWatchlist />
-          </div>
-        )}
-
-        {activeSection === "ratings" && <RatingBoard />}
-
-        {activeSection === "profile" && <Profile />}
-
-        {activeSection === "social" &&
-          (socialProfileUserId ? (
-            <SocialProfile
-              userId={socialProfileUserId}
-              onBack={() => setSocialProfileUserId(null)}
-              onViewProfile={(id) => setSocialProfileUserId(id)}
-            />
-          ) : (
-            <Social
-              onViewProfile={(id) => setSocialProfileUserId(id)}
-            />
-          ))}
-
-        {activeSection === "import" && (
-          <div className="mx-auto w-full max-w-6xl px-4 py-10">
-            <h1 className="text-3xl font-bold tracking-tight">
-              Import
-            </h1>
-
-            <p className="mt-2 text-white/50">
-              Bring in your watchlist or history from another
-              service.
-            </p>
-
-            <div className="mt-6 flex gap-2 border-b border-white/10 pb-px">
-              {IMPORT_TABS.map((tab) => {
-                const isActive = importTab === tab.id;
-
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setImportTab(tab.id)}
-                    className={`rounded-t-lg px-4 py-2.5 text-sm font-semibold transition ${
-                      isActive
-                        ? "border-b-2 border-purple-400 text-white"
-                        : "text-white/40 hover:text-white/70"
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="mt-8">
-              {importTab === "mal" && <MALImport />}
-              {importTab === "tmdb" && <TMDBImport />}
-              {importTab === "imdb" && <IMDBImport />}
-            </div>
-          </div>
-        )}
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }

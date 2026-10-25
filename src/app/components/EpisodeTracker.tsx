@@ -37,22 +37,22 @@ export default function EpisodeTracker({
   contentId: string;
   category: TrackedCategory;
   /*
-   * Anime: MAL id (Jikan). TV: TMDB id.
+   * Anime: TMDB TV series id (used with TMDB season endpoint)
+   * TV: TMDB TV series id
    * Same underlying id used to build contentId elsewhere.
    */
   tmdbId: string | number;
   /*
    * Per-episode runtime estimate (minutes) to use when the
    * API doesn't give us a specific episode's runtime — TV
-   * falls back to this, Anime always uses this (Jikan has
-   * no per-episode duration).
+   * and Anime both fall back to this.
    */
   fallbackRuntimeMinutes: number | null;
 }) {
   const [seasons, setSeasons] = useState<SeasonMeta[]>([]);
   const [selectedSeason, setSelectedSeason] = useState(1);
   const [seasonsLoading, setSeasonsLoading] = useState(
-    category === "TV",
+    category === "TV" || category === "Anime",
   );
 
   const [episodes, setEpisodes] = useState<EpisodeInfo[]>([]);
@@ -90,11 +90,13 @@ export default function EpisodeTracker({
   const [markingRange, setMarkingRange] = useState(false);
 
   /*
-   * TV: load the season list once (from tv-details, which
-   * now also returns `seasons`).
+   * TV and Anime: load the season list once (from the same
+   * TMDB TV details endpoint, which now also returns
+   * `seasons`). For Anime, TMDB models it as a TV show, so
+   * the season list is populated the same way.
    */
   useEffect(() => {
-    if (category !== "TV") {
+    if (category !== "TV" && category !== "Anime") {
       return;
     }
 
@@ -149,13 +151,15 @@ export default function EpisodeTracker({
     try {
       let episodeList: EpisodeInfo[];
 
-      if (category === "TV") {
+      if (category === "TV" || category === "Anime") {
+        // Both TV and Anime use the TMDB season endpoint now.
         episodeList = await fetchTvSeasonEpisodes(
           tmdbId,
           selectedSeason,
           fallbackRuntimeMinutes,
         );
       } else {
+        // Fallback for any other category (not currently used).
         const fallbackSeconds =
           typeof fallbackRuntimeMinutes === "number" &&
           fallbackRuntimeMinutes > 0
@@ -191,8 +195,8 @@ export default function EpisodeTracker({
   }, [category, tmdbId, selectedSeason, fallbackRuntimeMinutes, contentId]);
 
   useEffect(() => {
-    // For TV, wait until we know which season to load.
-    if (category === "TV" && seasonsLoading) {
+    // For TV/Anime, wait until we know which season to load.
+    if ((category === "TV" || category === "Anime") && seasonsLoading) {
       return;
     }
 
@@ -404,27 +408,28 @@ export default function EpisodeTracker({
         </h3>
 
         <div className="flex flex-wrap items-center gap-2">
-          {category === "TV" && seasons.length > 0 && (
-            <select
-              value={selectedSeason}
-              onChange={(event) =>
-                setSelectedSeason(Number(event.target.value))
-              }
-              className="h-9 rounded-lg border border-white/10 bg-[#14141d] px-3 text-xs text-white outline-none focus:border-purple-400/60"
-            >
-              {seasons.map((season) => (
-                <option
-                  key={season.seasonNumber}
-                  value={season.seasonNumber}
-                >
-                  {season.name}
-                  {season.episodeCount
-                    ? ` (${season.episodeCount} ep)`
-                    : ""}
-                </option>
-              ))}
-            </select>
-          )}
+          {(category === "TV" || category === "Anime") &&
+            seasons.length > 0 && (
+              <select
+                value={selectedSeason}
+                onChange={(event) =>
+                  setSelectedSeason(Number(event.target.value))
+                }
+                className="h-9 rounded-lg border border-white/10 bg-[#14141d] px-3 text-xs text-white outline-none focus:border-purple-400/60"
+              >
+                {seasons.map((season) => (
+                  <option
+                    key={season.seasonNumber}
+                    value={season.seasonNumber}
+                  >
+                    {season.name}
+                    {season.episodeCount
+                      ? ` (${season.episodeCount} ep)`
+                      : ""}
+                  </option>
+                ))}
+              </select>
+            )}
 
           <button
             type="button"
@@ -649,7 +654,10 @@ export default function EpisodeTracker({
           {episodes.length === 0 && (
             <p className="py-4 text-center text-xs text-white/30">
               No episodes found for this{" "}
-              {category === "TV" ? "season" : "title"}.
+              {category === "TV" || category === "Anime"
+                ? "season"
+                : "title"}
+              .
             </p>
           )}
         </div>

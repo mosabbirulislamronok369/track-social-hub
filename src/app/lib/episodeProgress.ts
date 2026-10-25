@@ -1,6 +1,10 @@
 import { supabase } from "./supabase";
 
-export type TrackedCategory = "TV" | "Anime";
+/* ============================================================
+   TYPES
+============================================================ */
+
+export type TrackedCategory = "Anime" | "TV";
 
 export type EpisodeInfo = {
   episodeNumber: number;
@@ -17,185 +21,114 @@ export type Arc = {
   name: string;
   startEpisode: number;
   endEpisode: number;
+  createdAt: string;
+};
+
+export type EpisodeGroup = {
+  arc: Arc | null;
+  episodes: EpisodeInfo[];
 };
 
 /* ============================================================
-   TV — episodes for one season
+   TMDB SEASON EPISODES (shared by TV and Anime)
 ============================================================ */
 
+/**
+ * Fetches the episode list for a TMDB TV show's season.
+ * Both TV and Anime (modeled as TV on TMDB) use this.
+ *
+ * The backend route `/api/tmdb/tv-season-episodes` wraps
+ * TMDB's `/tv/{id}/season/{n}` endpoint and returns:
+ *   { episodes: [{ episodeNumber, name, runtimeSeconds, airDate }] }
+ */
 export async function fetchTvSeasonEpisodes(
   tmdbId: string | number,
   seasonNumber: number,
   fallbackRuntimeMinutes: number | null,
 ): Promise<EpisodeInfo[]> {
-  const res = await fetch(
-    `/api/tmdb/tv-season?id=${encodeURIComponent(
-      String(tmdbId),
-    )}&season=${encodeURIComponent(String(seasonNumber))}`,
-    {
-      cache: "no-store",
-    },
-  );
-
-  let data: any = null;
-
-  try {
-    data = await res.json();
-  } catch {
-    data = null;
-  }
-
-  if (!res.ok) {
-    throw new Error(
-      data?.message ||
-        data?.error ||
-        `Failed to load season ${seasonNumber}.`,
-    );
-  }
-
   const fallbackSeconds =
     typeof fallbackRuntimeMinutes === "number" &&
-    Number.isFinite(fallbackRuntimeMinutes) &&
     fallbackRuntimeMinutes > 0
       ? Math.round(fallbackRuntimeMinutes * 60)
       : 0;
 
-  const episodes = Array.isArray(data?.episodes)
-    ? data.episodes
-    : [];
+  const res = await fetch(
+    `/api/tmdb/tv-season-episodes?id=${encodeURIComponent(
+      String(tmdbId),
+    )}&season=${encodeURIComponent(
+      String(seasonNumber),
+    )}&fallbackRuntime=${encodeURIComponent(
+      String(fallbackSeconds),
+    )}`,
+    { cache: "no-store" },
+  );
 
-  return episodes
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(
+      `Failed to load season episodes (${res.status})${
+        text ? `: ${text}` : ""
+      }`,
+    );
+  }
+
+  const data = await res.json();
+  const raw = Array.isArray(data?.episodes) ? data.episodes : [];
+
+  return raw
+    .filter(
+      (ep: any) =>
+        typeof ep?.episodeNumber === "number" &&
+        ep.episodeNumber > 0,
+    )
     .map((ep: any) => ({
-      episodeNumber: Number(ep?.episodeNumber),
+      episodeNumber: ep.episodeNumber,
       name:
         typeof ep?.name === "string" && ep.name.trim()
           ? ep.name
-          : `Episode ${ep?.episodeNumber ?? ""}`,
+          : `Episode ${ep.episodeNumber}`,
       runtimeSeconds:
-        typeof ep?.runtime === "number" &&
-        Number.isFinite(ep.runtime) &&
-        ep.runtime > 0
-          ? Math.round(ep.runtime * 60)
+        typeof ep?.runtimeSeconds === "number" &&
+        ep.runtimeSeconds > 0
+          ? ep.runtimeSeconds
           : fallbackSeconds,
-      airDate: ep?.airDate ?? null,
-    }))
-    .filter(
-      (ep: EpisodeInfo) =>
-        Number.isFinite(ep.episodeNumber) &&
-        ep.episodeNumber > 0,
-    );
+      airDate:
+        typeof ep?.airDate === "string"
+          ? ep.airDate
+          : null,
+    }));
 }
 
 /* ============================================================
-   ANIME — episodes through our server-side Jikan proxy
-
-   Browser
-      ↓
-   /api/anime/episodes
-      ↓
-   Jikan
-      ↓
-   MyAnimeList
-
-   IMPORTANT:
-   Never call api.jikan.moe directly from the browser.
+   ANIME EPISODES (TMDB-backed; kept for backward compatibility)
 ============================================================ */
 
+/**
+ * Anime is now served from TMDB (modeled as a TV show), so
+ * this delegates to fetchTvSeasonEpisodes with season 1.
+ *
+ * Kept as a separate export so existing Anime code paths
+ * continue to work without change — the underlying data
+ * source is the same TMDB season endpoint.
+ */
 export async function fetchAnimeEpisodes(
-  malId: string | number,
-  averageRuntimeSeconds: number,
+  tmdbId: string | number,
+  fallbackRuntimeSeconds: number,
 ): Promise<EpisodeInfo[]> {
-  if (
-    malId === null ||
-    malId === undefined ||
-    String(malId).trim() === ""
-  ) {
-    throw new Error("Anime MAL ID is missing.");
-  }
+  const fallbackMinutes =
+    fallbackRuntimeSeconds > 0
+      ? fallbackRuntimeSeconds / 60
+      : null;
 
-  const params = new URLSearchParams();
-
-  params.set("malId", String(malId));
-
-  if (
-    Number.isFinite(averageRuntimeSeconds) &&
-    averageRuntimeSeconds > 0
-  ) {
-    params.set(
-      "runtimeSeconds",
-      String(Math.round(averageRuntimeSeconds)),
-    );
-  }
-
-  const res = await fetch(
-    `/api/anime/episodes?${params.toString()}`,
-    {
-      method: "GET",
-      cache: "no-store",
-      headers: {
-        Accept: "application/json",
-      },
-    },
+  return fetchTvSeasonEpisodes(
+    tmdbId,
+    1,
+    fallbackMinutes,
   );
-
-  let data: any = null;
-
-  try {
-    data = await res.json();
-  } catch {
-    data = null;
-  }
-
-  if (!res.ok) {
-    const message =
-      data?.message ||
-      data?.error ||
-      `Failed to load anime episodes (HTTP ${res.status}).`;
-
-    throw new Error(message);
-  }
-
-  const episodes = Array.isArray(data?.episodes)
-    ? data.episodes
-    : Array.isArray(data?.data)
-      ? data.data
-      : [];
-
-  return episodes
-    .map((ep: any) => {
-      const episodeNumber = Number(ep?.episodeNumber);
-
-      const runtimeSeconds =
-        typeof ep?.runtimeSeconds === "number" &&
-        Number.isFinite(ep.runtimeSeconds) &&
-        ep.runtimeSeconds >= 0
-          ? ep.runtimeSeconds
-          : averageRuntimeSeconds;
-
-      return {
-        episodeNumber,
-        name:
-          typeof ep?.name === "string" &&
-          ep.name.trim()
-            ? ep.name
-            : `Episode ${episodeNumber}`,
-        runtimeSeconds,
-        airDate: ep?.airDate ?? null,
-      };
-    })
-    .filter(
-      (ep: EpisodeInfo) =>
-        Number.isFinite(ep.episodeNumber) &&
-        ep.episodeNumber > 0,
-    )
-    .sort(
-      (a: { episodeNumber: number; }, b: { episodeNumber: number; }) =>
-        a.episodeNumber - b.episodeNumber,
-    );
 }
 
 /* ============================================================
-   EPISODE PROGRESS
+   WATCHED EPISODES
 ============================================================ */
 
 export async function fetchWatchedEpisodes(
@@ -207,7 +140,7 @@ export async function fetchWatchedEpisodes(
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return new Set<number>();
+    return new Set();
   }
 
   const { data, error } = await supabase
@@ -219,27 +152,19 @@ export async function fetchWatchedEpisodes(
     .eq("watched", true);
 
   if (error) {
-    console.error(
-      "Failed to load episode progress:",
-      error,
-    );
-
-    return new Set<number>();
+    console.error("Failed to load watched episodes:", error);
+    return new Set();
   }
 
-  return new Set<number>(
+  return new Set(
     (data ?? [])
       .map((row: any) => Number(row.episode_number))
-      .filter(
-        (episodeNumber: number) =>
-          Number.isFinite(episodeNumber) &&
-          episodeNumber > 0,
-      ),
+      .filter((n) => Number.isFinite(n) && n > 0),
   );
 }
 
 /* ============================================================
-   SET EPISODE WATCHED
+   SET EPISODE WATCHED / UNWATCHED
 ============================================================ */
 
 export async function setEpisodeWatched(
@@ -248,25 +173,14 @@ export async function setEpisodeWatched(
   seasonNumber: number,
   episode: EpisodeInfo,
   watched: boolean,
-  options?: {
-    sync?: boolean;
-  },
+  options?: { sync?: boolean },
 ): Promise<void> {
-  const shouldSync = options?.sync ?? true;
-
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) {
-    throw new Error("Please login first.");
-  }
-
-  if (
-    !Number.isFinite(episode.episodeNumber) ||
-    episode.episodeNumber <= 0
-  ) {
-    throw new Error("Invalid episode number.");
+    throw new Error("Please login before marking episodes.");
   }
 
   if (watched) {
@@ -279,13 +193,10 @@ export async function setEpisodeWatched(
           category,
           season_number: seasonNumber,
           episode_number: episode.episodeNumber,
-          runtime_seconds:
-            Number.isFinite(episode.runtimeSeconds) &&
-            episode.runtimeSeconds >= 0
-              ? episode.runtimeSeconds
-              : 0,
+          episode_name: episode.name,
+          runtime_seconds: episode.runtimeSeconds,
           watched: true,
-          updated_at: new Date().toISOString(),
+          watched_at: new Date().toISOString(),
         },
         {
           onConflict:
@@ -303,31 +214,124 @@ export async function setEpisodeWatched(
       .eq("user_id", user.id)
       .eq("content_id", contentId)
       .eq("season_number", seasonNumber)
-      .eq(
-        "episode_number",
-        episode.episodeNumber,
-      );
+      .eq("episode_number", episode.episodeNumber);
 
     if (error) {
       throw error;
     }
   }
 
-  /*
-   * Bulk operations can pass { sync: false }.
-   * The caller then performs one final sync.
-   */
-  if (!shouldSync) {
+  // Skip derived recomputes when caller is doing a bulk batch
+  // and will call syncTotalWatchTimeFromEpisodes /
+  // syncWatchlistProgress once at the end.
+  if (options?.sync !== false) {
+    await syncTotalWatchTimeFromEpisodes(contentId, category);
+    await syncWatchlistProgress(contentId);
+  }
+}
+
+/* ============================================================
+   TOTAL WATCH TIME RECOMPUTE
+============================================================ */
+
+export async function syncTotalWatchTimeFromEpisodes(
+  contentId: string,
+  category: TrackedCategory,
+): Promise<void> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
     return;
   }
 
-  await syncTotalWatchTimeFromEpisodes(
-    contentId,
-    category,
-    episode.name,
+  const { data, error } = await supabase
+    .from("episode_progress")
+    .select("runtime_seconds")
+    .eq("user_id", user.id)
+    .eq("content_id", contentId)
+    .eq("watched", true);
+
+  if (error) {
+    console.error(
+      "Failed to recompute total watch time:",
+      error,
+    );
+    return;
+  }
+
+  const totalSeconds = (data ?? []).reduce(
+    (sum, row: any) =>
+      sum + Number(row.runtime_seconds ?? 0),
+    0,
   );
 
-  await syncWatchlistProgress(contentId);
+  const now = new Date().toISOString();
+
+  const { data: existingSessions, error: findError } =
+    await supabase
+      .from("watch_sessions")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("content_id", contentId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+  if (findError) {
+    console.error(
+      "Failed to find watch session:",
+      findError,
+    );
+    return;
+  }
+
+  const existing = existingSessions?.[0];
+
+  if (existing) {
+    const { error: updateError } = await supabase
+      .from("watch_sessions")
+      .update({
+        total_seconds: totalSeconds,
+        is_active: false,
+        category,
+        last_heartbeat: now,
+      })
+      .eq("id", existing.id)
+      .eq("user_id", user.id);
+
+    if (updateError) {
+      console.error(
+        "Failed to update watch session:",
+        updateError,
+      );
+    }
+
+    return;
+  }
+
+  if (totalSeconds <= 0) {
+    return;
+  }
+
+  const { error: insertError } = await supabase
+    .from("watch_sessions")
+    .insert({
+      user_id: user.id,
+      content_id: contentId,
+      started_at: now,
+      last_heartbeat: now,
+      is_active: false,
+      total_seconds: totalSeconds,
+      category,
+    });
+
+  if (insertError) {
+    console.error(
+      "Failed to insert watch session:",
+      insertError,
+    );
+  }
 }
 
 /* ============================================================
@@ -347,258 +351,68 @@ export async function syncWatchlistProgress(
 
   const { data, error } = await supabase
     .from("episode_progress")
-    .select("episode_number")
+    .select("season_number,episode_number")
     .eq("user_id", user.id)
     .eq("content_id", contentId)
-    .eq("watched", true);
+    .eq("watched", true)
+    .order("season_number", { ascending: true })
+    .order("episode_number", { ascending: true });
 
   if (error) {
     console.error(
-      "Failed to recompute watchlist progress:",
+      "Failed to load episode progress for watchlist sync:",
       error,
     );
-
     return;
   }
 
-  const watchedCount =
-    (data ?? []).length;
-
-  const { error: updateError } =
-    await supabase
+  if (!data || data.length === 0) {
+    const { error: resetError } = await supabase
       .from("watchlist_items")
       .update({
-        current_episode: watchedCount,
+        current_episode: 0,
         updated_at: new Date().toISOString(),
       })
       .eq("user_id", user.id)
       .eq("content_id", contentId);
 
+    if (resetError) {
+      console.error(
+        "Failed to reset watchlist progress:",
+        resetError,
+      );
+    }
+
+    return;
+  }
+
+  // Flat episode number = (completed seasons' episode count)
+  // + current season's episode number. We don't know prior
+  // season sizes here, so this uses a simple "highest episode
+  // number in any season" heuristic — good enough for the
+  // Continue Watching card, which only needs an approximate
+  // "Ep X / Y" display.
+  const maxEpisodeNumber = data.reduce(
+    (max, row: any) =>
+      Math.max(max, Number(row.episode_number ?? 0)),
+    0,
+  );
+
+  const { error: updateError } = await supabase
+    .from("watchlist_items")
+    .update({
+      current_episode: maxEpisodeNumber,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", user.id)
+    .eq("content_id", contentId);
+
   if (updateError) {
     console.error(
-      "Failed to sync watchlist current_episode:",
+      "Failed to sync watchlist progress:",
       updateError,
     );
   }
-}
-
-/* ============================================================
-   TOTAL WATCH TIME SYNC
-============================================================ */
-
-export async function syncTotalWatchTimeFromEpisodes(
-  contentId: string,
-  category: TrackedCategory,
-  title?: string,
-): Promise<void> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return;
-  }
-
-  const { data, error } = await supabase
-    .from("episode_progress")
-    .select("runtime_seconds")
-    .eq("user_id", user.id)
-    .eq("content_id", contentId)
-    .eq("watched", true);
-
-  if (error) {
-    console.error(
-      "Failed to recompute watch time:",
-      error,
-    );
-
-    return;
-  }
-
-  const totalSeconds =
-    (data ?? []).reduce(
-      (sum: number, row: any) =>
-        sum +
-        Number(row?.runtime_seconds || 0),
-      0,
-    );
-
-  const { data: existing, error: existingError } =
-    await supabase
-      .from("watch_sessions")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("content_id", contentId)
-      .order("created_at", {
-        ascending: false,
-      })
-      .limit(1);
-
-  if (existingError) {
-    console.error(
-      "Failed to find watch session:",
-      existingError,
-    );
-  }
-
-  const row = existing?.[0];
-
-  if (row) {
-    const { error: updateError } =
-      await supabase
-        .from("watch_sessions")
-        .update({
-          total_seconds: totalSeconds,
-          category,
-          is_active: false,
-          last_heartbeat:
-            new Date().toISOString(),
-          ...(title ? { title } : {}),
-        })
-        .eq("id", row.id)
-        .eq("user_id", user.id);
-
-    if (updateError) {
-      console.error(
-        "Failed to update watch session:",
-        updateError,
-      );
-    }
-
-    return;
-  }
-
-  if (totalSeconds > 0) {
-    const now =
-      new Date().toISOString();
-
-    const { error: insertError } =
-      await supabase
-        .from("watch_sessions")
-        .insert({
-          user_id: user.id,
-          content_id: contentId,
-          category,
-          started_at: now,
-          last_heartbeat: now,
-          is_active: false,
-          total_seconds: totalSeconds,
-          ...(title ? { title } : {}),
-        });
-
-    if (insertError) {
-      console.error(
-        "Failed to create watch session:",
-        insertError,
-      );
-    }
-  }
-}
-
-/* ============================================================
-   TV FLAT EPISODE -> SEASON / EPISODE
-============================================================ */
-
-export async function fetchTvSeasonBreakdown(
-  tmdbId: string | number,
-): Promise<
-  {
-    seasonNumber: number;
-    episodeCount: number;
-  }[]
-> {
-  const res = await fetch(
-    `/api/tmdb/tv-details?id=${encodeURIComponent(
-      String(tmdbId),
-    )}`,
-    {
-      cache: "no-store",
-    },
-  );
-
-  let data: any = null;
-
-  try {
-    data = await res.json();
-  } catch {
-    data = null;
-  }
-
-  if (!res.ok) {
-    throw new Error(
-      data?.message ||
-        data?.error ||
-        "Failed to load season breakdown.",
-    );
-  }
-
-  return (Array.isArray(data?.seasons)
-    ? data.seasons
-    : []
-  )
-    .filter(
-      (season: any) =>
-        typeof season?.seasonNumber ===
-          "number" &&
-        Number.isFinite(
-          season.seasonNumber,
-        ) &&
-        season.seasonNumber > 0 &&
-        typeof season?.episodeCount ===
-          "number" &&
-        Number.isFinite(
-          season.episodeCount,
-        ) &&
-        season.episodeCount > 0,
-    )
-    .sort(
-      (a: any, b: any) =>
-        a.seasonNumber -
-        b.seasonNumber,
-    )
-    .map((season: any) => ({
-      seasonNumber:
-        season.seasonNumber,
-      episodeCount:
-        season.episodeCount,
-    }));
-}
-
-export function resolveFlatEpisode(
-  breakdown: {
-    seasonNumber: number;
-    episodeCount: number;
-  }[],
-  flatEpisodeNumber: number,
-): {
-  seasonNumber: number;
-  episodeNumber: number;
-} | null {
-  if (
-    !Number.isFinite(flatEpisodeNumber) ||
-    flatEpisodeNumber <= 0
-  ) {
-    return null;
-  }
-
-  let remaining =
-    Math.floor(flatEpisodeNumber);
-
-  for (const season of breakdown) {
-    if (remaining <= season.episodeCount) {
-      return {
-        seasonNumber:
-          season.seasonNumber,
-        episodeNumber:
-          remaining,
-      };
-    }
-
-    remaining -=
-      season.episodeCount;
-  }
-
-  return null;
 }
 
 /* ============================================================
@@ -609,44 +423,37 @@ export async function fetchArcs(
   contentId: string,
   seasonNumber: number,
 ): Promise<Arc[]> {
-  const { data, error } =
-    await supabase
-      .from("content_arcs")
-      .select(
-        "id,content_id,category,season_number,name,start_episode,end_episode",
-      )
-      .eq("content_id", contentId)
-      .eq(
-        "season_number",
-        seasonNumber,
-      )
-      .order("start_episode", {
-        ascending: true,
-      });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (error) {
-    console.error(
-      "Failed to load arcs:",
-      error,
-    );
-
+  if (!user) {
     return [];
   }
 
-  return (data ?? []).map(
-    (row: any) => ({
-      id: row.id,
-      contentId: row.content_id,
-      category: row.category,
-      seasonNumber:
-        row.season_number,
-      name: row.name,
-      startEpisode:
-        row.start_episode,
-      endEpisode:
-        row.end_episode,
-    }),
-  );
+  const { data, error } = await supabase
+    .from("episode_arcs")
+    .select("*")
+    .eq("user_id", user.id)
+    .eq("content_id", contentId)
+    .eq("season_number", seasonNumber)
+    .order("start_episode", { ascending: true });
+
+  if (error) {
+    console.error("Failed to load arcs:", error);
+    return [];
+  }
+
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    contentId: row.content_id,
+    category: row.category as TrackedCategory,
+    seasonNumber: Number(row.season_number),
+    name: row.name,
+    startEpisode: Number(row.start_episode),
+    endEpisode: Number(row.end_episode),
+    createdAt: row.created_at,
+  }));
 }
 
 export async function createArc(
@@ -661,37 +468,23 @@ export async function createArc(
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (
-    !Number.isFinite(startEpisode) ||
-    !Number.isFinite(endEpisode) ||
-    startEpisode <= 0 ||
-    endEpisode < startEpisode
-  ) {
-    throw new Error(
-      "Invalid episode range.",
-    );
+  if (!user) {
+    throw new Error("Please login before creating an arc.");
   }
 
-  const { data, error } =
-    await supabase
-      .from("content_arcs")
-      .insert({
-        content_id: contentId,
-        category,
-        season_number:
-          seasonNumber,
-        name: name.trim(),
-        start_episode:
-          startEpisode,
-        end_episode:
-          endEpisode,
-        created_by:
-          user?.id ?? null,
-      })
-      .select(
-        "id,content_id,category,season_number,name,start_episode,end_episode",
-      )
-      .single();
+  const { data, error } = await supabase
+    .from("episode_arcs")
+    .insert({
+      user_id: user.id,
+      content_id: contentId,
+      category,
+      season_number: seasonNumber,
+      name,
+      start_episode: startEpisode,
+      end_episode: endEpisode,
+    })
+    .select()
+    .single();
 
   if (error) {
     throw error;
@@ -699,17 +492,13 @@ export async function createArc(
 
   return {
     id: data.id,
-    contentId:
-      data.content_id,
-    category:
-      data.category,
-    seasonNumber:
-      data.season_number,
+    contentId: data.content_id,
+    category: data.category as TrackedCategory,
+    seasonNumber: Number(data.season_number),
     name: data.name,
-    startEpisode:
-      data.start_episode,
-    endEpisode:
-      data.end_episode,
+    startEpisode: Number(data.start_episode),
+    endEpisode: Number(data.end_episode),
+    createdAt: data.created_at,
   };
 }
 
@@ -720,119 +509,36 @@ export async function createArc(
 export function groupEpisodesByArc(
   episodes: EpisodeInfo[],
   arcs: Arc[],
-): {
-  arc: Arc | null;
-  episodes: EpisodeInfo[];
-}[] {
-  if (episodes.length === 0) {
-    return [];
-  }
-
+): EpisodeGroup[] {
   if (arcs.length === 0) {
-    return [
-      {
-        arc: null,
-        episodes,
-      },
-    ];
+    return [{ arc: null, episodes }];
   }
 
-  const sortedEpisodes =
-    [...episodes].sort(
-      (a, b) =>
-        a.episodeNumber -
-        b.episodeNumber,
-    );
+  const groups: EpisodeGroup[] = [];
+  const assignedEpisodeNumbers = new Set<number>();
 
-  const sortedArcs =
-    [...arcs]
-      .filter(
-        (arc) =>
-          Number.isFinite(
-            arc.startEpisode,
-          ) &&
-          Number.isFinite(
-            arc.endEpisode,
-          ) &&
-          arc.endEpisode >=
-            arc.startEpisode,
-      )
-      .sort(
-        (a, b) =>
-          a.startEpisode -
-          b.startEpisode,
-      );
-
-  const groups: {
-    arc: Arc | null;
-    episodes: EpisodeInfo[];
-  }[] = [];
-
-  let currentIndex = 0;
+  // Sort arcs by startEpisode to ensure correct order
+  const sortedArcs = [...arcs].sort((a, b) => a.startEpisode - b.startEpisode);
 
   for (const arc of sortedArcs) {
-    if (
-      arc.startEpisode >
-      arc.endEpisode
-    ) {
-      continue;
-    }
-
-    const before =
-      sortedEpisodes
-        .slice(currentIndex)
-        .filter(
-          (episode) =>
-            episode.episodeNumber <
-            arc.startEpisode,
-        );
-
-    if (before.length > 0) {
-      groups.push({
-        arc: null,
-        episodes: before,
-      });
-    }
-
-    const inArc =
-      sortedEpisodes.filter(
-        (episode) =>
-          episode.episodeNumber >=
-            arc.startEpisode &&
-          episode.episodeNumber <=
-            arc.endEpisode,
-      );
-
-    if (inArc.length > 0) {
-      groups.push({
-        arc,
-        episodes: inArc,
-      });
-    }
-
-    const lastCovered =
-      sortedEpisodes.findIndex(
-        (episode) =>
-          episode.episodeNumber >
-          arc.endEpisode,
-      );
-
-    currentIndex =
-      lastCovered === -1
-        ? sortedEpisodes.length
-        : lastCovered;
-  }
-
-  const remaining =
-    sortedEpisodes.slice(
-      currentIndex,
+    const arcEpisodes = episodes.filter(
+      (ep) =>
+        ep.episodeNumber >= arc.startEpisode &&
+        ep.episodeNumber <= arc.endEpisode,
     );
 
-  if (remaining.length > 0) {
-    groups.push({
-      arc: null,
-      episodes: remaining,
-    });
+    if (arcEpisodes.length > 0) {
+      groups.push({ arc, episodes: arcEpisodes });
+      arcEpisodes.forEach((ep) => assignedEpisodeNumbers.add(ep.episodeNumber));
+    }
+  }
+
+  const unassignedEpisodes = episodes.filter(
+    (ep) => !assignedEpisodeNumbers.has(ep.episodeNumber),
+  );
+
+  if (unassignedEpisodes.length > 0) {
+    groups.push({ arc: null, episodes: unassignedEpisodes });
   }
 
   return groups;
