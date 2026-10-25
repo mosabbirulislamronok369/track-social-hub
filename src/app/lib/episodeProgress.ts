@@ -1,9 +1,5 @@
 import { supabase } from "./supabase";
 
-/* ============================================================
-   TYPES
-============================================================ */
-
 export type TrackedCategory = "Anime" | "TV";
 
 export type EpisodeInfo = {
@@ -29,38 +25,25 @@ export type EpisodeGroup = {
   episodes: EpisodeInfo[];
 };
 
-/* ============================================================
-   TMDB SEASON EPISODES (shared by TV and Anime)
-============================================================ */
-
 export async function fetchTvSeasonEpisodes(
   tmdbId: string | number,
   seasonNumber: number,
   fallbackRuntimeMinutes: number | null,
 ): Promise<EpisodeInfo[]> {
   const fallbackSeconds =
-    typeof fallbackRuntimeMinutes === "number" &&
-    fallbackRuntimeMinutes > 0
+    typeof fallbackRuntimeMinutes === "number" && fallbackRuntimeMinutes > 0
       ? Math.round(fallbackRuntimeMinutes * 60)
       : 0;
 
   const res = await fetch(
-    `/api/tmdb/tv-season-episodes?id=${encodeURIComponent(
-      String(tmdbId),
-    )}&season=${encodeURIComponent(
-      String(seasonNumber),
-    )}&fallbackRuntime=${encodeURIComponent(
-      String(fallbackSeconds),
-    )}`,
+    `/api/tmdb/tv-season-episodes?id=${encodeURIComponent(String(tmdbId))}&season=${encodeURIComponent(String(seasonNumber))}&fallbackRuntime=${encodeURIComponent(String(fallbackSeconds))}`,
     { cache: "no-store" },
   );
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(
-      `Failed to load season episodes (${res.status})${
-        text ? `: ${text}` : ""
-      }`,
+      `Failed to load season episodes (${res.status})${text ? `: ${text}` : ""}`,
     );
   }
 
@@ -70,59 +53,38 @@ export async function fetchTvSeasonEpisodes(
   return raw
     .filter(
       (ep: any) =>
-        typeof ep?.episodeNumber === "number" &&
-        ep.episodeNumber > 0,
+        typeof ep?.episodeNumber === "number" && ep.episodeNumber > 0,
     )
     .map((ep: any, index: number) => ({
-      // TMDB-তে ডুপ্লিকেট এপিসোড নম্বর থাকলে সমস্যা হয়, তাই ইনডেক্স ব্যবহার করা হলো
+      // 👇 এখানে index + 1 দেওয়া হলো যাতে সব এপিসোডের নম্বর ইউনিক হয়
       episodeNumber: index + 1,
       name:
         typeof ep?.name === "string" && ep.name.trim()
           ? ep.name
           : `Episode ${index + 1}`,
       runtimeSeconds:
-        typeof ep?.runtimeSeconds === "number" &&
-        ep.runtimeSeconds > 0
+        typeof ep?.runtimeSeconds === "number" && ep.runtimeSeconds > 0
           ? ep.runtimeSeconds
           : fallbackSeconds,
-      airDate:
-        typeof ep?.airDate === "string"
-          ? ep.airDate
-          : null,
+      airDate: typeof ep?.airDate === "string" ? ep.airDate : null,
     }));
 }
-
-/* ============================================================
-   ANIME EPISODES (TMDB-backed)
-============================================================ */
 
 export async function fetchAnimeEpisodes(
   tmdbId: string | number,
   fallbackRuntimeSeconds: number,
 ): Promise<EpisodeInfo[]> {
   const fallbackMinutes =
-    fallbackRuntimeSeconds > 0
-      ? fallbackRuntimeSeconds / 60
-      : null;
-
+    fallbackRuntimeSeconds > 0 ? fallbackRuntimeSeconds / 60 : null;
   return fetchTvSeasonEpisodes(tmdbId, 1, fallbackMinutes);
 }
-
-/* ============================================================
-   WATCHED EPISODES
-============================================================ */
 
 export async function fetchWatchedEpisodes(
   contentId: string,
   seasonNumber: number,
 ): Promise<Set<number>> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return new Set();
-  }
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return new Set();
 
   const { data, error } = await supabase
     .from("episode_progress")
@@ -144,10 +106,6 @@ export async function fetchWatchedEpisodes(
   );
 }
 
-/* ============================================================
-   SET EPISODE WATCHED / UNWATCHED
-============================================================ */
-
 export async function setEpisodeWatched(
   contentId: string,
   category: TrackedCategory,
@@ -156,38 +114,25 @@ export async function setEpisodeWatched(
   watched: boolean,
   options?: { sync?: boolean },
 ): Promise<void> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error("Please login before marking episodes.");
-  }
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Please login before marking episodes.");
 
   if (watched) {
-    const { error } = await supabase
-      .from("episode_progress")
-      .upsert(
-        {
-          user_id: user.id,
-          content_id: contentId,
-          category,
-          season_number: seasonNumber,
-          episode_number: episode.episodeNumber,
-          episode_name: episode.name,
-          runtime_seconds: episode.runtimeSeconds,
-          watched: true,
-          watched_at: new Date().toISOString(),
-        },
-        {
-          onConflict:
-            "user_id,content_id,season_number,episode_number",
-        },
-      );
-
-    if (error) {
-      throw error;
-    }
+    const { error } = await supabase.from("episode_progress").upsert(
+      {
+        user_id: user.id,
+        content_id: contentId,
+        category,
+        season_number: seasonNumber,
+        episode_number: episode.episodeNumber,
+        episode_name: episode.name,
+        runtime_seconds: episode.runtimeSeconds,
+        watched: true,
+        watched_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,content_id,season_number,episode_number" },
+    );
+    if (error) throw error;
   } else {
     const { error } = await supabase
       .from("episode_progress")
@@ -196,10 +141,7 @@ export async function setEpisodeWatched(
       .eq("content_id", contentId)
       .eq("season_number", seasonNumber)
       .eq("episode_number", episode.episodeNumber);
-
-    if (error) {
-      throw error;
-    }
+    if (error) throw error;
   }
 
   if (options?.sync !== false) {
@@ -208,18 +150,11 @@ export async function setEpisodeWatched(
   }
 }
 
-/* ============================================================
-   TOTAL WATCH TIME RECOMPUTE
-============================================================ */
-
 export async function syncTotalWatchTimeFromEpisodes(
   contentId: string,
   category: TrackedCategory,
 ): Promise<void> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
 
   const { data, error } = await supabase
@@ -240,7 +175,6 @@ export async function syncTotalWatchTimeFromEpisodes(
   );
 
   const now = new Date().toISOString();
-
   const { data: existingSessions, error: findError } = await supabase
     .from("watch_sessions")
     .select("id")
@@ -249,61 +183,33 @@ export async function syncTotalWatchTimeFromEpisodes(
     .order("created_at", { ascending: false })
     .limit(1);
 
-  if (findError) {
-    console.error("Failed to find watch session:", findError);
-    return;
-  }
-
+  if (findError) return;
   const existing = existingSessions?.[0];
 
   if (existing) {
-    const { error: updateError } = await supabase
+    await supabase
       .from("watch_sessions")
-      .update({
-        total_seconds: totalSeconds,
-        is_active: false,
-        category,
-        last_heartbeat: now,
-      })
+      .update({ total_seconds: totalSeconds, is_active: false, category, last_heartbeat: now })
       .eq("id", existing.id)
       .eq("user_id", user.id);
-
-    if (updateError) {
-      console.error("Failed to update watch session:", updateError);
-    }
     return;
   }
 
   if (totalSeconds <= 0) return;
 
-  const { error: insertError } = await supabase
-    .from("watch_sessions")
-    .insert({
-      user_id: user.id,
-      content_id: contentId,
-      started_at: now,
-      last_heartbeat: now,
-      is_active: false,
-      total_seconds: totalSeconds,
-      category,
-    });
-
-  if (insertError) {
-    console.error("Failed to insert watch session:", insertError);
-  }
+  await supabase.from("watch_sessions").insert({
+    user_id: user.id,
+    content_id: contentId,
+    started_at: now,
+    last_heartbeat: now,
+    is_active: false,
+    total_seconds: totalSeconds,
+    category,
+  });
 }
 
-/* ============================================================
-   WATCHLIST PROGRESS SYNC
-============================================================ */
-
-export async function syncWatchlistProgress(
-  contentId: string,
-): Promise<void> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+export async function syncWatchlistProgress(contentId: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
 
   const { data, error } = await supabase
@@ -315,18 +221,12 @@ export async function syncWatchlistProgress(
     .order("season_number", { ascending: true })
     .order("episode_number", { ascending: true });
 
-  if (error) {
-    console.error("Failed to load progress for watchlist sync:", error);
-    return;
-  }
+  if (error) return;
 
   if (!data || data.length === 0) {
     await supabase
       .from("watchlist_items")
-      .update({
-        current_episode: 0,
-        updated_at: new Date().toISOString(),
-      })
+      .update({ current_episode: 0, updated_at: new Date().toISOString() })
       .eq("user_id", user.id)
       .eq("content_id", contentId);
     return;
@@ -337,32 +237,18 @@ export async function syncWatchlistProgress(
     0,
   );
 
-  const { error: updateError } = await supabase
+  await supabase
     .from("watchlist_items")
-    .update({
-      current_episode: maxEpisodeNumber,
-      updated_at: new Date().toISOString(),
-    })
+    .update({ current_episode: maxEpisodeNumber, updated_at: new Date().toISOString() })
     .eq("user_id", user.id)
     .eq("content_id", contentId);
-
-  if (updateError) {
-    console.error("Failed to sync watchlist progress:", updateError);
-  }
 }
-
-/* ============================================================
-   ARCS
-============================================================ */
 
 export async function fetchArcs(
   contentId: string,
   seasonNumber: number,
 ): Promise<Arc[]> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
   const { data, error } = await supabase
@@ -373,11 +259,7 @@ export async function fetchArcs(
     .eq("season_number", seasonNumber)
     .order("start_episode", { ascending: true });
 
-  if (error) {
-    console.error("Failed to load arcs:", error);
-    return [];
-  }
-
+  if (error) return [];
   return (data ?? []).map((row: any) => ({
     id: row.id,
     contentId: row.content_id,
@@ -398,13 +280,8 @@ export async function createArc(
   startEpisode: number,
   endEpisode: number,
 ): Promise<Arc> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error("Please login before creating an arc.");
-  }
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Please login before creating an arc.");
 
   const { data, error } = await supabase
     .from("episode_arcs")
@@ -434,30 +311,20 @@ export async function createArc(
   };
 }
 
-/* ============================================================
-   GROUP EPISODES BY ARC
-============================================================ */
-
 export function groupEpisodesByArc(
   episodes: EpisodeInfo[],
   arcs: Arc[],
 ): EpisodeGroup[] {
-  if (arcs.length === 0) {
-    return [{ arc: null, episodes }];
-  }
+  if (arcs.length === 0) return [{ arc: null, episodes }];
 
   const groups: EpisodeGroup[] = [];
   const assignedEpisodeNumbers = new Set<number>();
-
   const sortedArcs = [...arcs].sort((a, b) => a.startEpisode - b.startEpisode);
 
   for (const arc of sortedArcs) {
     const arcEpisodes = episodes.filter(
-      (ep) =>
-        ep.episodeNumber >= arc.startEpisode &&
-        ep.episodeNumber <= arc.endEpisode,
+      (ep) => ep.episodeNumber >= arc.startEpisode && ep.episodeNumber <= arc.endEpisode,
     );
-
     if (arcEpisodes.length > 0) {
       groups.push({ arc, episodes: arcEpisodes });
       arcEpisodes.forEach((ep) => assignedEpisodeNumbers.add(ep.episodeNumber));
@@ -467,10 +334,7 @@ export function groupEpisodesByArc(
   const unassignedEpisodes = episodes.filter(
     (ep) => !assignedEpisodeNumbers.has(ep.episodeNumber),
   );
-
-  if (unassignedEpisodes.length > 0) {
-    groups.push({ arc: null, episodes: unassignedEpisodes });
-  }
+  if (unassignedEpisodes.length > 0) groups.push({ arc: null, episodes: unassignedEpisodes });
 
   return groups;
 }
