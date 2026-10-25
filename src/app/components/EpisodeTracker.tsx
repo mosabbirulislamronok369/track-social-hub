@@ -36,17 +36,7 @@ export default function EpisodeTracker({
 }: {
   contentId: string;
   category: TrackedCategory;
-  /*
-   * Anime: TMDB TV series id (used with TMDB season endpoint)
-   * TV: TMDB TV series id
-   * Same underlying id used to build contentId elsewhere.
-   */
   tmdbId: string | number;
-  /*
-   * Per-episode runtime estimate (minutes) to use when the
-   * API doesn't give us a specific episode's runtime — TV
-   * and Anime both fall back to this.
-   */
   fallbackRuntimeMinutes: number | null;
 }) {
   const [seasons, setSeasons] = useState<SeasonMeta[]>([]);
@@ -59,13 +49,8 @@ export default function EpisodeTracker({
   const [episodesLoading, setEpisodesLoading] = useState(true);
   const [episodesError, setEpisodesError] = useState("");
 
-  const [watchedSet, setWatchedSet] = useState<Set<number>>(
-    new Set(),
-  );
-
-  const [savingEpisode, setSavingEpisode] = useState<
-    number | null
-  >(null);
+  const [watchedSet, setWatchedSet] = useState<Set<number>>(new Set());
+  const [savingEpisode, setSavingEpisode] = useState<number | null>(null);
 
   const [arcs, setArcs] = useState<Arc[]>([]);
 
@@ -75,62 +60,33 @@ export default function EpisodeTracker({
   const [arcEnd, setArcEnd] = useState("");
   const [savingArc, setSavingArc] = useState(false);
 
-  /*
-   * "Mark Episode Range" — for when you jumped straight to,
-   * say, episode 89–90 without watching the ones before it.
-   * Rather than scrolling through the whole list and clicking
-   * each row, this marks any episode in [from, to] as watched
-   * in one go, leaving everything outside that range alone
-   * (so it's fine if 1–88 stay unwatched).
-   */
-  const [showMarkRangeForm, setShowMarkRangeForm] =
-    useState(false);
+  const [showMarkRangeForm, setShowMarkRangeForm] = useState(false);
   const [markRangeFrom, setMarkRangeFrom] = useState("");
   const [markRangeTo, setMarkRangeTo] = useState("");
   const [markingRange, setMarkingRange] = useState(false);
 
-  /*
-   * TV and Anime: load the season list once (from the same
-   * TMDB TV details endpoint, which now also returns
-   * `seasons`). For Anime, TMDB models it as a TV show, so
-   * the season list is populated the same way.
-   */
+  // Load seasons
   useEffect(() => {
-    if (category !== "TV" && category !== "Anime") {
-      return;
-    }
+    if (category !== "TV" && category !== "Anime") return;
 
     let cancelled = false;
-
     setSeasonsLoading(true);
 
-    fetch(
-      `/api/tmdb/tv-details?id=${encodeURIComponent(
-        String(tmdbId),
-      )}`,
-      { cache: "no-store" },
-    )
+    fetch(`/api/tmdb/tv-details?id=${encodeURIComponent(String(tmdbId))}`, {
+      cache: "no-store",
+    })
       .then((res) => res.json())
       .then((data) => {
         if (cancelled) return;
-
-        const list: SeasonMeta[] = (data?.seasons || []).map(
-          (s: any) => ({
-            seasonNumber: s.seasonNumber,
-            name: s.name,
-            episodeCount: s.episodeCount,
-          }),
-        );
-
+        const list: SeasonMeta[] = (data?.seasons || []).map((s: any) => ({
+          seasonNumber: s.seasonNumber,
+          name: s.name,
+          episodeCount: s.episodeCount,
+        }));
         setSeasons(list);
-
-        if (list.length > 0) {
-          setSelectedSeason(list[0].seasonNumber);
-        }
+        if (list.length > 0) setSelectedSeason(list[0].seasonNumber);
       })
-      .catch((err) => {
-        console.error("Failed to load seasons:", err);
-      })
+      .catch((err) => console.error("Failed to load seasons:", err))
       .finally(() => {
         if (!cancelled) setSeasonsLoading(false);
       });
@@ -140,10 +96,6 @@ export default function EpisodeTracker({
     };
   }, [category, tmdbId]);
 
-  /*
-   * Load episodes (+ watched state + arcs) whenever the
-   * season changes (or once, for Anime).
-   */
   const loadSeasonData = useCallback(async () => {
     setEpisodesLoading(true);
     setEpisodesError("");
@@ -152,24 +104,17 @@ export default function EpisodeTracker({
       let episodeList: EpisodeInfo[];
 
       if (category === "TV" || category === "Anime") {
-        // Both TV and Anime use the TMDB season endpoint now.
         episodeList = await fetchTvSeasonEpisodes(
           tmdbId,
           selectedSeason,
           fallbackRuntimeMinutes,
         );
       } else {
-        // Fallback for any other category (not currently used).
         const fallbackSeconds =
-          typeof fallbackRuntimeMinutes === "number" &&
-          fallbackRuntimeMinutes > 0
+          typeof fallbackRuntimeMinutes === "number" && fallbackRuntimeMinutes > 0
             ? Math.round(fallbackRuntimeMinutes * 60)
             : 24 * 60;
-
-        episodeList = await fetchAnimeEpisodes(
-          tmdbId,
-          fallbackSeconds,
-        );
+        episodeList = await fetchAnimeEpisodes(tmdbId, fallbackSeconds);
       }
 
       setEpisodes(episodeList);
@@ -183,11 +128,8 @@ export default function EpisodeTracker({
       setArcs(arcList);
     } catch (err) {
       console.error("Failed to load episodes:", err);
-
       setEpisodesError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load episodes.",
+        err instanceof Error ? err.message : "Failed to load episodes.",
       );
     } finally {
       setEpisodesLoading(false);
@@ -195,37 +137,28 @@ export default function EpisodeTracker({
   }, [category, tmdbId, selectedSeason, fallbackRuntimeMinutes, contentId]);
 
   useEffect(() => {
-    // For TV/Anime, wait until we know which season to load.
-    if ((category === "TV" || category === "Anime") && seasonsLoading) {
-      return;
-    }
-
+    if ((category === "TV" || category === "Anime") && seasonsLoading) return;
     loadSeasonData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, seasonsLoading, selectedSeason]);
+  }, [category, seasonsLoading, selectedSeason, loadSeasonData]);
 
   async function toggleEpisode(
     episode: EpisodeInfo,
     options?: { sync?: boolean },
   ) {
-    if (savingEpisode === episode.episodeNumber) {
-      return;
-    }
+    if (savingEpisode === episode.episodeNumber) return;
 
-    const isWatched = watchedSet.has(episode.episodeNumber);
+    const isCurrentlyWatched = watchedSet.has(episode.episodeNumber);
 
     setSavingEpisode(episode.episodeNumber);
 
-    // Optimistic UI.
+    // Optimistic UI Update
     setWatchedSet((current) => {
       const next = new Set(current);
-
-      if (isWatched) {
+      if (isCurrentlyWatched) {
         next.delete(episode.episodeNumber);
       } else {
         next.add(episode.episodeNumber);
       }
-
       return next;
     });
 
@@ -235,46 +168,29 @@ export default function EpisodeTracker({
         category,
         selectedSeason,
         episode,
-        !isWatched,
+        !isCurrentlyWatched,
         options,
       );
     } catch (err) {
       console.error("Failed to save episode progress:", err);
 
-      // Roll back on failure.
+      // Rollback
       setWatchedSet((current) => {
         const next = new Set(current);
-
-        if (isWatched) {
+        if (isCurrentlyWatched) {
           next.add(episode.episodeNumber);
         } else {
           next.delete(episode.episodeNumber);
         }
-
         return next;
       });
 
-      alert(
-        err instanceof Error
-          ? err.message
-          : "Failed to save episode.",
-      );
+      alert(err instanceof Error ? err.message : "Failed to save episode.");
     } finally {
       setSavingEpisode(null);
     }
   }
 
-  /*
-   * Runs the two "derived state" recomputes once — total watch
-   * time and watchlist_items.current_episode — instead of once
-   * per episode. Bulk flows (Mark all watched / Mark Episode
-   * Range) pass { sync: false } into every toggleEpisode() call
-   * and then call this a single time at the end, so a 12-episode
-   * batch does 12 episode_progress writes but only ONE pair of
-   * recomputes instead of 12 racing pairs of them (which is what
-   * caused the Continue Watching card to briefly show a stale/
-   * wrong episode count).
-   */
   async function finalizeBatchSync() {
     try {
       await syncTotalWatchTimeFromEpisodes(contentId, category);
@@ -286,37 +202,24 @@ export default function EpisodeTracker({
 
   async function handleMarkAll(watched: boolean) {
     const targets = episodes.filter(
-      (episode) =>
-        watchedSet.has(episode.episodeNumber) !== watched,
+      (episode) => watchedSet.has(episode.episodeNumber) !== watched,
     );
 
-    if (targets.length === 0) {
-      return;
-    }
+    if (targets.length === 0) return;
 
     for (const episode of targets) {
-      // eslint-disable-next-line no-await-in-loop
       await toggleEpisode(episode, { sync: false });
     }
 
     await finalizeBatchSync();
   }
 
-  /*
-   * Marks every episode whose number falls inside
-   * [markRangeFrom, markRangeTo] as watched — and only those.
-   * Episodes before, after, or already watched are left as-is,
-   * so this is safe to use for "I only just watched 89–90"
-   * without touching 1–88.
-   */
   async function handleMarkRange() {
     const from = Number(markRangeFrom);
     const to = Number(markRangeTo);
 
     if (!from || !to || to < from) {
-      alert(
-        "Enter a valid episode range, e.g. From 89 to 90.",
-      );
+      alert("Enter a valid episode range, e.g. From 89 to 90.");
       return;
     }
 
@@ -331,13 +234,10 @@ export default function EpisodeTracker({
       );
 
       for (const episode of targets) {
-        // eslint-disable-next-line no-await-in-loop
         await toggleEpisode(episode, { sync: false });
       }
 
-      if (targets.length > 0) {
-        await finalizeBatchSync();
-      }
+      if (targets.length > 0) await finalizeBatchSync();
 
       setMarkRangeFrom("");
       setMarkRangeTo("");
@@ -367,23 +267,16 @@ export default function EpisodeTracker({
         start,
         end,
       );
-
       setArcs((current) =>
-        [...current, arc].sort(
-          (a, b) => a.startEpisode - b.startEpisode,
-        ),
+        [...current, arc].sort((a, b) => a.startEpisode - b.startEpisode),
       );
-
       setArcName("");
       setArcStart("");
       setArcEnd("");
       setShowArcForm(false);
     } catch (err) {
       console.error("Failed to create arc:", err);
-
-      alert(
-        err instanceof Error ? err.message : "Failed to save arc.",
-      );
+      alert(err instanceof Error ? err.message : "Failed to save arc.");
     } finally {
       setSavingArc(false);
     }
@@ -408,34 +301,24 @@ export default function EpisodeTracker({
         </h3>
 
         <div className="flex flex-wrap items-center gap-2">
-          {(category === "TV" || category === "Anime") &&
-            seasons.length > 0 && (
-              <select
-                value={selectedSeason}
-                onChange={(event) =>
-                  setSelectedSeason(Number(event.target.value))
-                }
-                className="h-9 rounded-lg border border-white/10 bg-[#14141d] px-3 text-xs text-white outline-none focus:border-purple-400/60"
-              >
-                {seasons.map((season) => (
-                  <option
-                    key={season.seasonNumber}
-                    value={season.seasonNumber}
-                  >
-                    {season.name}
-                    {season.episodeCount
-                      ? ` (${season.episodeCount} ep)`
-                      : ""}
-                  </option>
-                ))}
-              </select>
-            )}
+          {(category === "TV" || category === "Anime") && seasons.length > 0 && (
+            <select
+              value={selectedSeason}
+              onChange={(e) => setSelectedSeason(Number(e.target.value))}
+              className="h-9 rounded-lg border border-white/10 bg-[#14141d] px-3 text-xs text-white outline-none focus:border-purple-400/60"
+            >
+              {seasons.map((season) => (
+                <option key={season.seasonNumber} value={season.seasonNumber}>
+                  {season.name}
+                  {season.episodeCount ? ` (${season.episodeCount} ep)` : ""}
+                </option>
+              ))}
+            </select>
+          )}
 
           <button
             type="button"
-            onClick={() =>
-              setShowMarkRangeForm((current) => !current)
-            }
+            onClick={() => setShowMarkRangeForm((c) => !c)}
             disabled={episodesLoading || episodes.length === 0}
             className="h-9 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -462,7 +345,7 @@ export default function EpisodeTracker({
 
           <button
             type="button"
-            onClick={() => setShowArcForm((current) => !current)}
+            onClick={() => setShowArcForm((c) => !c)}
             className="h-9 rounded-lg border border-purple-400/30 bg-purple-500/10 px-3 text-xs font-semibold text-purple-300 transition hover:bg-purple-500/20"
           >
             + Add Arc
@@ -470,39 +353,28 @@ export default function EpisodeTracker({
         </div>
       </div>
 
-      {/* MARK EPISODE RANGE FORM */}
       {showMarkRangeForm && (
         <div className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/[0.04] p-3">
           <div className="w-24">
-            <label className="mb-1 block text-[11px] text-white/40">
-              From ep
-            </label>
+            <label className="mb-1 block text-[11px] text-white/40">From ep</label>
             <input
               type="number"
               value={markRangeFrom}
-              onChange={(event) =>
-                setMarkRangeFrom(event.target.value)
-              }
+              onChange={(e) => setMarkRangeFrom(e.target.value)}
               placeholder="89"
               className="h-9 w-full rounded-lg border border-white/10 bg-[#14141d] px-3 text-xs text-white outline-none focus:border-emerald-400/60"
             />
           </div>
-
           <div className="w-24">
-            <label className="mb-1 block text-[11px] text-white/40">
-              To ep
-            </label>
+            <label className="mb-1 block text-[11px] text-white/40">To ep</label>
             <input
               type="number"
               value={markRangeTo}
-              onChange={(event) =>
-                setMarkRangeTo(event.target.value)
-              }
+              onChange={(e) => setMarkRangeTo(e.target.value)}
               placeholder="90"
               className="h-9 w-full rounded-lg border border-white/10 bg-[#14141d] px-3 text-xs text-white outline-none focus:border-emerald-400/60"
             />
           </div>
-
           <button
             type="button"
             onClick={handleMarkRange}
@@ -511,54 +383,38 @@ export default function EpisodeTracker({
           >
             {markingRange ? "Marking..." : "Mark watched"}
           </button>
-
-          <p className="w-full text-[11px] text-white/30">
-            Only episodes {markRangeFrom || "?"}–
-            {markRangeTo || "?"} get marked watched — everything
-            before or after is left alone.
-          </p>
         </div>
       )}
 
-      {/* ARC FORM */}
       {showArcForm && (
         <div className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border border-white/10 bg-black/20 p-3">
           <div className="flex-1 min-w-[140px]">
-            <label className="mb-1 block text-[11px] text-white/40">
-              Arc name
-            </label>
+            <label className="mb-1 block text-[11px] text-white/40">Arc name</label>
             <input
               value={arcName}
-              onChange={(event) => setArcName(event.target.value)}
+              onChange={(e) => setArcName(e.target.value)}
               placeholder="e.g. Chunin Exams"
               className="h-9 w-full rounded-lg border border-white/10 bg-[#14141d] px-3 text-xs text-white outline-none focus:border-purple-400/60"
             />
           </div>
-
           <div className="w-20">
-            <label className="mb-1 block text-[11px] text-white/40">
-              Start ep
-            </label>
+            <label className="mb-1 block text-[11px] text-white/40">Start ep</label>
             <input
               type="number"
               value={arcStart}
-              onChange={(event) => setArcStart(event.target.value)}
+              onChange={(e) => setArcStart(e.target.value)}
               className="h-9 w-full rounded-lg border border-white/10 bg-[#14141d] px-3 text-xs text-white outline-none focus:border-purple-400/60"
             />
           </div>
-
           <div className="w-20">
-            <label className="mb-1 block text-[11px] text-white/40">
-              End ep
-            </label>
+            <label className="mb-1 block text-[11px] text-white/40">End ep</label>
             <input
               type="number"
               value={arcEnd}
-              onChange={(event) => setArcEnd(event.target.value)}
+              onChange={(e) => setArcEnd(e.target.value)}
               className="h-9 w-full rounded-lg border border-white/10 bg-[#14141d] px-3 text-xs text-white outline-none focus:border-purple-400/60"
             />
           </div>
-
           <button
             type="button"
             onClick={handleCreateArc}
@@ -570,26 +426,20 @@ export default function EpisodeTracker({
         </div>
       )}
 
-      {/* ERROR */}
       {episodesError && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
           {episodesError}
         </div>
       )}
 
-      {/* LOADING */}
       {episodesLoading && (
         <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, index) => (
-            <div
-              key={index}
-              className="h-10 animate-pulse rounded-lg bg-white/5"
-            />
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="h-10 animate-pulse rounded-lg bg-white/5" />
           ))}
         </div>
       )}
 
-      {/* EPISODE LIST (grouped by arc where applicable) */}
       {!episodesLoading && !episodesError && (
         <div className="max-h-80 space-y-4 overflow-y-auto pr-1">
           {groups.map((group, groupIndex) => (
@@ -598,24 +448,19 @@ export default function EpisodeTracker({
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-purple-300">
                   {group.arc.name}{" "}
                   <span className="text-white/30">
-                    (Ep {group.arc.startEpisode}–
-                    {group.arc.endEpisode})
+                    (Ep {group.arc.startEpisode}–{group.arc.endEpisode})
                   </span>
                 </p>
               )}
 
               <div className="space-y-1">
-                {group.episodes.map((episode) => {
-                  const watched = watchedSet.has(
-                    episode.episodeNumber,
-                  );
-
-                  const isSaving =
-                    savingEpisode === episode.episodeNumber;
+                {group.episodes.map((episode, epIndex) => {
+                  const watched = watchedSet.has(episode.episodeNumber);
+                  const isSaving = savingEpisode === episode.episodeNumber;
 
                   return (
                     <button
-                      key={episode.episodeNumber}
+                      key={`${groupIndex}-${epIndex}-${episode.episodeNumber}`}
                       type="button"
                       disabled={isSaving}
                       onClick={() => toggleEpisode(episode)}
@@ -654,10 +499,7 @@ export default function EpisodeTracker({
           {episodes.length === 0 && (
             <p className="py-4 text-center text-xs text-white/30">
               No episodes found for this{" "}
-              {category === "TV" || category === "Anime"
-                ? "season"
-                : "title"}
-              .
+              {category === "TV" || category === "Anime" ? "season" : "title"}.
             </p>
           )}
         </div>

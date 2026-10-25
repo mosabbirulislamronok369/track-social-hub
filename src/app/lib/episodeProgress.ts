@@ -33,14 +33,6 @@ export type EpisodeGroup = {
    TMDB SEASON EPISODES (shared by TV and Anime)
 ============================================================ */
 
-/**
- * Fetches the episode list for a TMDB TV show's season.
- * Both TV and Anime (modeled as TV on TMDB) use this.
- *
- * The backend route `/api/tmdb/tv-season-episodes` wraps
- * TMDB's `/tv/{id}/season/{n}` endpoint and returns:
- *   { episodes: [{ episodeNumber, name, runtimeSeconds, airDate }] }
- */
 export async function fetchTvSeasonEpisodes(
   tmdbId: string | number,
   seasonNumber: number,
@@ -81,12 +73,13 @@ export async function fetchTvSeasonEpisodes(
         typeof ep?.episodeNumber === "number" &&
         ep.episodeNumber > 0,
     )
-    .map((ep: any) => ({
-      episodeNumber: ep.episodeNumber,
+    .map((ep: any, index: number) => ({
+      // TMDB-তে ডুপ্লিকেট এপিসোড নম্বর থাকলে সমস্যা হয়, তাই ইনডেক্স ব্যবহার করা হলো
+      episodeNumber: index + 1,
       name:
         typeof ep?.name === "string" && ep.name.trim()
           ? ep.name
-          : `Episode ${ep.episodeNumber}`,
+          : `Episode ${index + 1}`,
       runtimeSeconds:
         typeof ep?.runtimeSeconds === "number" &&
         ep.runtimeSeconds > 0
@@ -100,17 +93,9 @@ export async function fetchTvSeasonEpisodes(
 }
 
 /* ============================================================
-   ANIME EPISODES (TMDB-backed; kept for backward compatibility)
+   ANIME EPISODES (TMDB-backed)
 ============================================================ */
 
-/**
- * Anime is now served from TMDB (modeled as a TV show), so
- * this delegates to fetchTvSeasonEpisodes with season 1.
- *
- * Kept as a separate export so existing Anime code paths
- * continue to work without change — the underlying data
- * source is the same TMDB season endpoint.
- */
 export async function fetchAnimeEpisodes(
   tmdbId: string | number,
   fallbackRuntimeSeconds: number,
@@ -120,11 +105,7 @@ export async function fetchAnimeEpisodes(
       ? fallbackRuntimeSeconds / 60
       : null;
 
-  return fetchTvSeasonEpisodes(
-    tmdbId,
-    1,
-    fallbackMinutes,
-  );
+  return fetchTvSeasonEpisodes(tmdbId, 1, fallbackMinutes);
 }
 
 /* ============================================================
@@ -221,9 +202,6 @@ export async function setEpisodeWatched(
     }
   }
 
-  // Skip derived recomputes when caller is doing a bulk batch
-  // and will call syncTotalWatchTimeFromEpisodes /
-  // syncWatchlistProgress once at the end.
   if (options?.sync !== false) {
     await syncTotalWatchTimeFromEpisodes(contentId, category);
     await syncWatchlistProgress(contentId);
@@ -242,9 +220,7 @@ export async function syncTotalWatchTimeFromEpisodes(
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    return;
-  }
+  if (!user) return;
 
   const { data, error } = await supabase
     .from("episode_progress")
@@ -254,35 +230,27 @@ export async function syncTotalWatchTimeFromEpisodes(
     .eq("watched", true);
 
   if (error) {
-    console.error(
-      "Failed to recompute total watch time:",
-      error,
-    );
+    console.error("Failed to recompute total watch time:", error);
     return;
   }
 
   const totalSeconds = (data ?? []).reduce(
-    (sum, row: any) =>
-      sum + Number(row.runtime_seconds ?? 0),
+    (sum, row: any) => sum + Number(row.runtime_seconds ?? 0),
     0,
   );
 
   const now = new Date().toISOString();
 
-  const { data: existingSessions, error: findError } =
-    await supabase
-      .from("watch_sessions")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("content_id", contentId)
-      .order("created_at", { ascending: false })
-      .limit(1);
+  const { data: existingSessions, error: findError } = await supabase
+    .from("watch_sessions")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("content_id", contentId)
+    .order("created_at", { ascending: false })
+    .limit(1);
 
   if (findError) {
-    console.error(
-      "Failed to find watch session:",
-      findError,
-    );
+    console.error("Failed to find watch session:", findError);
     return;
   }
 
@@ -301,18 +269,12 @@ export async function syncTotalWatchTimeFromEpisodes(
       .eq("user_id", user.id);
 
     if (updateError) {
-      console.error(
-        "Failed to update watch session:",
-        updateError,
-      );
+      console.error("Failed to update watch session:", updateError);
     }
-
     return;
   }
 
-  if (totalSeconds <= 0) {
-    return;
-  }
+  if (totalSeconds <= 0) return;
 
   const { error: insertError } = await supabase
     .from("watch_sessions")
@@ -327,10 +289,7 @@ export async function syncTotalWatchTimeFromEpisodes(
     });
 
   if (insertError) {
-    console.error(
-      "Failed to insert watch session:",
-      insertError,
-    );
+    console.error("Failed to insert watch session:", insertError);
   }
 }
 
@@ -345,9 +304,7 @@ export async function syncWatchlistProgress(
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    return;
-  }
+  if (!user) return;
 
   const { data, error } = await supabase
     .from("episode_progress")
@@ -359,15 +316,12 @@ export async function syncWatchlistProgress(
     .order("episode_number", { ascending: true });
 
   if (error) {
-    console.error(
-      "Failed to load episode progress for watchlist sync:",
-      error,
-    );
+    console.error("Failed to load progress for watchlist sync:", error);
     return;
   }
 
   if (!data || data.length === 0) {
-    const { error: resetError } = await supabase
+    await supabase
       .from("watchlist_items")
       .update({
         current_episode: 0,
@@ -375,26 +329,11 @@ export async function syncWatchlistProgress(
       })
       .eq("user_id", user.id)
       .eq("content_id", contentId);
-
-    if (resetError) {
-      console.error(
-        "Failed to reset watchlist progress:",
-        resetError,
-      );
-    }
-
     return;
   }
 
-  // Flat episode number = (completed seasons' episode count)
-  // + current season's episode number. We don't know prior
-  // season sizes here, so this uses a simple "highest episode
-  // number in any season" heuristic — good enough for the
-  // Continue Watching card, which only needs an approximate
-  // "Ep X / Y" display.
   const maxEpisodeNumber = data.reduce(
-    (max, row: any) =>
-      Math.max(max, Number(row.episode_number ?? 0)),
+    (max, row: any) => Math.max(max, Number(row.episode_number ?? 0)),
     0,
   );
 
@@ -408,10 +347,7 @@ export async function syncWatchlistProgress(
     .eq("content_id", contentId);
 
   if (updateError) {
-    console.error(
-      "Failed to sync watchlist progress:",
-      updateError,
-    );
+    console.error("Failed to sync watchlist progress:", updateError);
   }
 }
 
@@ -427,9 +363,7 @@ export async function fetchArcs(
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    return [];
-  }
+  if (!user) return [];
 
   const { data, error } = await supabase
     .from("episode_arcs")
@@ -486,9 +420,7 @@ export async function createArc(
     .select()
     .single();
 
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
 
   return {
     id: data.id,
@@ -517,7 +449,6 @@ export function groupEpisodesByArc(
   const groups: EpisodeGroup[] = [];
   const assignedEpisodeNumbers = new Set<number>();
 
-  // Sort arcs by startEpisode to ensure correct order
   const sortedArcs = [...arcs].sort((a, b) => a.startEpisode - b.startEpisode);
 
   for (const arc of sortedArcs) {
