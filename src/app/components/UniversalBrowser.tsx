@@ -253,6 +253,7 @@ function normalizeYouTube(data: any) {
   });
   return { items, hasNextPage: false };
 }
+
 export default function UniversalBrowser() {
   const [contentType, setContentType] = useState<ContentType>("Anime");
   const [searchQuery, setSearchQuery] = useState("");
@@ -539,7 +540,8 @@ export default function UniversalBrowser() {
   const getStatus = (item: ContentItem, type: ContentType) => statuses[getContentId(item, type)] || null;
   const getImage = (item: ContentItem) => item.image || "https://placehold.co/600x900/111827/ffffff?text=No+Image";
   const getTitle = (item: ContentItem) => item.title || "Untitled";
-    if (activeChannel) {
+
+  if (activeChannel) {
     const totalChannelPages = Math.max(1, Math.ceil(channelVideos.length / CHANNEL_VIDEOS_PAGE_SIZE));
     const channelPageItems = channelVideos.slice((channelPage - 1) * CHANNEL_VIDEOS_PAGE_SIZE, channelPage * CHANNEL_VIDEOS_PAGE_SIZE);
     return (
@@ -573,79 +575,229 @@ export default function UniversalBrowser() {
                         <img src={getImage(video)} alt={getTitle(video)} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" loading="lazy" />
                         <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/90 to-transparent" />
                         <button type="button" onClick={() => { const next = new Set(selectedVideoIds); if (next.has(videoId)) next.delete(videoId); else next.add(videoId); setSelectedVideoIds(next); }} className={`absolute left-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border text-sm font-bold backdrop-blur-md transition ${isSelected ? "border-emerald-400 bg-emerald-500 text-black" : "border-white/30 bg-black/60 text-transparent hover:border-white/60"}`}>✓</button>
-                      {watchSeconds > 0 && (
-                        <span className="absolute bottom-2 right-2 rounded bg-black/80 px-2 py-0.5 text-xs font-semibold">
-                          {formatWatchTime(watchSeconds)}
-                        </span>
-                      )}
+                        {watchSeconds > 0 && (
+                          <span className="absolute bottom-2 right-2 rounded bg-black/80 px-2 py-0.5 text-xs font-semibold">
+                            {formatWatchTime(watchSeconds)}
+                          </span>
+                        )}
+                        
+                                   {status && (
+                          <div className={`absolute right-2 top-2 rounded-full border px-2 py-0.5 text-xs font-semibold backdrop-blur-md ${STATUS_COLORS[status]}`}>
+                            {STATUS_ICONS[status]}
+                          </div>
+                        )}
+                      </div>
 
+                      <div className="p-3">
+                        <h2 className="line-clamp-2 min-h-[2.75rem] text-sm font-bold leading-6">
+                          {getTitle(video)}
+                        </h2>
+                        {video.date && <p className="mt-1 text-xs text-white/40">{video.date}</p>}
+
+                        <div className="mt-2">
+                          <RatingStars value={ratings[getContentId(video, "YouTube")] ?? null} onRate={(value) => handleRateItem(video, "YouTube", value)} />
+                        </div>
+
+                        <div className="mt-1.5">
+                          <RatingDistribution stats={ratingStats[getContentId(video, "YouTube")]} />
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <button type="button" onClick={() => saveItemStatus(video, "YouTube", "completed")} className={`h-9 rounded-lg text-xs font-semibold transition ${status === "completed" ? "border border-emerald-400/30 bg-emerald-500/10 text-emerald-300" : "bg-white text-black hover:bg-white/90"}`}>
+                            {status === "completed" ? "✓ Done" : "Mark Complete"}
+                          </button>
+
+                          <a href={`https://www.youtube.com/watch?v=${video.id}`} target="_blank" rel="noopener noreferrer" className="flex h-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-xs font-semibold text-white transition hover:bg-white/10">
+                            Watch
+                          </a>
+                        </div>
+
+                        {status && (
+                          <button type="button" disabled={savingId === getContentId(video, "YouTube")} onClick={() => removeItem(video, "YouTube")} className="mt-2 h-8 w-full rounded-lg border border-red-400/30 bg-red-500/10 text-xs font-semibold text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50">
+                            🗑 Remove
+                          </button>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+
+              <div className="mt-8 flex items-center justify-center gap-3">
+                <button type="button" disabled={channelPage <= 1} onClick={() => setChannelPage((current) => Math.max(1, current - 1))} className="rounded-xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30">
+                  ← Previous
+                </button>
+                <span className="rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3 text-sm text-white/60">
+                  Page {channelPage} of {totalChannelPages}
+                </span>
+                <button type="button" disabled={channelPage >= totalChannelPages} onClick={() => setChannelPage((current) => Math.min(totalChannelPages, current + 1))} className="rounded-xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30">
+                  Next →
+                </button>
+              </div>
+            </>
+          )}
+
+          {!channelVideosLoading && !channelVideosError && channelVideos.length === 0 && (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-12 text-center">
+              <p className="text-lg font-semibold">No videos found</p>
+              <p className="mt-2 text-sm text-white/40">This channel doesn't have any videos yet.</p>
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="min-h-screen bg-[#070711] px-4 py-8 text-white sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">Browse</h1>
+          <p className="mt-2 text-white/50">Search Movies, TV, Anime or YouTube</p>
+        </div>
+
+        <div className="mb-8 flex flex-col gap-3 sm:flex-row">
+          <select value={contentType} onChange={(e) => setContentType(e.target.value as ContentType)} className="h-14 rounded-xl border border-white/10 bg-[#14141d] px-4 text-base text-white outline-none transition focus:border-purple-400/60 sm:w-40">
+            {CONTENT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+          </select>
+
+          {contentType === "YouTube" && (
+            <select value={youtubeSearchType} onChange={(e) => setYoutubeSearchType(e.target.value as YouTubeSearchType)} className="h-14 rounded-xl border border-white/10 bg-[#14141d] px-4 text-base text-white outline-none transition focus:border-purple-400/60 sm:w-40">
+              {YOUTUBE_SEARCH_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+            </select>
+          )}
+
+          <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleSearch(); }} placeholder={contentType === "YouTube" && youtubeSearchType === "Link" ? "Paste a YouTube link..." : `Search ${contentType}...`} className="h-14 flex-1 rounded-xl border border-white/10 bg-[#14141d] px-4 text-base text-white outline-none transition placeholder:text-white/30 focus:border-purple-400/60" />
+          <button type="button" onClick={handleSearch} disabled={loading} className="h-14 rounded-xl bg-white px-8 font-semibold text-black transition hover:bg-white/90 disabled:opacity-50">
+            {loading ? "Searching..." : "Search"}
+          </button>
+        </div>
+
+        {error && (
+          <div className="mb-6 rounded-2xl border border-red-500/50 bg-red-500/10 p-5">
+            <p className="font-semibold text-red-300">{contentType} search</p>
+            <p className="mt-1 text-red-200/80">{error}</p>
+          </div>
+        )}
+
+        {loading && (
+          <div className="mb-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="overflow-hidden rounded-2xl border border-white/10 bg-[#11111a]">
+                <div className="aspect-[2/3] animate-pulse bg-white/5" />
+                <div className="space-y-3 p-4"><div className="h-5 animate-pulse rounded bg-white/5" /><div className="h-4 w-2/3 animate-pulse rounded bg-white/5" /></div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loading && items.length > 0 && (
+          <>
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {items.map((item) => {
+                const contentId = getContentId(item, contentType);
+                const status = getStatus(item, contentType);
+                const watchSeconds = resolveWatchTimeSeconds(item, contentType);
+                const isSaving = savingId === contentId;
+
+                return (
+                  <article key={contentId} className="glass-panel group relative overflow-visible rounded-2xl border border-white/10 bg-[#11111a] shadow-xl shadow-black/20 transition hover:-translate-y-1 hover:border-white/20">
+                    <div className="relative aspect-[2/3] overflow-hidden rounded-t-2xl bg-black">
+                      <img src={getImage(item)} alt={getTitle(item)} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" loading="lazy" />
+                      <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/90 to-transparent" />
                       {status && (
-                        <div className={`absolute right-2 top-2 rounded-full border px-2 py-0.5 text-xs font-semibold backdrop-blur-md ${STATUS_COLORS[status]}`}>
-                          {STATUS_ICONS[status]}
+                        <div className={`absolute left-3 top-3 rounded-full border px-3 py-1.5 text-xs font-semibold backdrop-blur-md ${STATUS_COLORS[status]}`}>
+                          {STATUS_ICONS[status]} {STATUS_LABELS[status]}
                         </div>
                       )}
+                      <div className="absolute right-3 top-3" ref={menuOpen === contentId ? menuRef : undefined}>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === contentId ? null : contentId); }} className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/60 text-xl backdrop-blur-md transition hover:bg-black/80">⋮</button>
+                        {menuOpen === contentId && (
+                          <div className="absolute right-0 top-12 z-[200] w-56 overflow-hidden rounded-xl border border-white/10 bg-[#171720] p-1 shadow-2xl">
+                            {STATUS_ORDER.map((opt) => (
+                              <button key={opt} type="button" onClick={(e) => { e.stopPropagation(); saveItemStatus(item, contentType, opt); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-white/70 hover:bg-white/5 hover:text-white">
+                                <span className="w-5 text-center">{STATUS_ICONS[opt]}</span><span>{STATUS_LABELS[opt]}</span>
+                              </button>
+                            ))}
+                            {status && (
+                              <><div className="my-1 h-px bg-white/10" /><button type="button" onClick={(e) => { e.stopPropagation(); removeItem(item, contentType); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-red-300 hover:bg-red-500/10"><span className="w-5 text-center">🗑</span><span>Remove</span></button></>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
-
-                    <div className="p-3">
-                      <h2 className="line-clamp-2 min-h-[2.75rem] text-sm font-bold leading-6">
-                        {getTitle(video)}
-                      </h2>
-                      {video.date && <p className="mt-1 text-xs text-white/40">{video.date}</p>}
-
-                      <div className="mt-2">
-                        <RatingStars value={ratings[getContentId(video, "YouTube")] ?? null} onRate={(value) => handleRateItem(video, "YouTube", value)} />
+                    <div className="p-4">
+                      <h2 className="line-clamp-2 min-h-[3.5rem] text-lg font-bold leading-7">{getTitle(item)}</h2>
+                      <div className="mt-3 flex flex-wrap items-center gap-x-3 text-sm text-white/50">
+                        {item.rating != null && <span>⭐ {Number(item.rating).toFixed(1)}</span>}
+                        {item.year && <span>{item.year}</span>}
+                        {item.episodes && <span>{item.episodes} eps</span>}
                       </div>
-
-                      <div className="mt-1.5">
-                        <RatingDistribution stats={ratingStats[getContentId(video, "YouTube")]} />
+                      <p className="mt-4 text-xs text-white/40">Watch time: <span className="font-semibold text-white/70">{watchSeconds > 0 ? formatWatchTime(watchSeconds) : "N/A"}</span></p>
+                      <div className="mt-3"><RatingStars value={ratings[contentId] ?? null} onRate={(v) => handleRateItem(item, contentType, v)} /></div>
+                      <div className="mt-2"><RatingDistribution stats={ratingStats[contentId]} /></div>
+                      <div className="mt-4 grid gap-2">
+                        {status === "completed" ? (
+                          <button type="button" onClick={() => saveItemStatus(item, contentType, "completed")} className="h-11 rounded-xl border border-emerald-400/30 bg-emerald-500/10 font-semibold text-emerald-300">✓ Completed</button>
+                        ) : (
+                          <button type="button" onClick={() => saveItemStatus(item, contentType, "watchlist")} className="h-11 rounded-xl bg-white font-semibold text-black hover:bg-white/90">+ Add to Watchlist</button>
+                        )}
+                        <button type="button" onClick={() => setSelectedItem(item)} className="h-11 rounded-xl border border-white/10 bg-white/5 font-semibold text-white hover:bg-white/10">Details</button>
+                        {status && <button type="button" onClick={() => removeItem(item, contentType)} className="h-11 rounded-xl border border-red-400/30 bg-red-500/10 font-semibold text-red-300">🗑 Remove</button>}
                       </div>
-
-                      <div className="mt-3 grid grid-cols-2 gap-2">
-                        <button type="button" onClick={() => saveItemStatus(video, "YouTube", "completed")} className={`h-9 rounded-lg text-xs font-semibold transition ${status === "completed" ? "border border-emerald-400/30 bg-emerald-500/10 text-emerald-300" : "bg-white text-black hover:bg-white/90"}`}>
-                          {status === "completed" ? "✓ Done" : "Mark Complete"}
-                        </button>
-
-                        <a href={`https://www.youtube.com/watch?v=${video.id}`} target="_blank" rel="noopener noreferrer" className="flex h-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-xs font-semibold text-white transition hover:bg-white/10">
-                          Watch
-                        </a>
-                      </div>
-
-                      {status && (
-                        <button type="button" disabled={savingId === getContentId(video, "YouTube")} onClick={() => removeItem(video, "YouTube")} className="mt-2 h-8 w-full rounded-lg border border-red-400/30 bg-red-500/10 text-xs font-semibold text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50">
-                          🗑 Remove
-                        </button>
-                      )}
                     </div>
                   </article>
                 );
               })}
             </div>
-
-            {/* CHANNEL PAGINATION */}
             <div className="mt-8 flex items-center justify-center gap-3">
-              <button type="button" disabled={channelPage <= 1} onClick={() => setChannelPage((current) => Math.max(1, current - 1))} className="rounded-xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30">
-                ← Previous
-              </button>
-              <span className="rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3 text-sm text-white/60">
-                Page {channelPage} of {totalChannelPages}
-              </span>
-              <button type="button" disabled={channelPage >= totalChannelPages} onClick={() => setChannelPage((current) => Math.min(totalChannelPages, current + 1))} className="rounded-xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30">
-                Next →
-              </button>
+              <button type="button" disabled={page <= 1 || loading} onClick={handlePreviousPage} className="rounded-xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold disabled:opacity-30">← Previous</button>
+              <span className="rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3 text-sm">Page {page}</span>
+              <button type="button" disabled={!hasNextPage || loading} onClick={handleNextPage} className="rounded-xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold disabled:opacity-30">Next →</button>
             </div>
           </>
         )}
 
-        {/* EMPTY */}
-        {!channelVideosLoading && !channelVideosError && channelVideos.length === 0 && (
+        {!loading && !error && items.length === 0 && (
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-12 text-center">
-            <p className="text-lg font-semibold">No videos found</p>
-            <p className="mt-2 text-sm text-white/40">This channel doesn't have any videos yet.</p>
+            <p className="text-lg font-semibold">No results found</p>
+            <p className="mt-2 text-sm text-white/40">Try another search.</p>
           </div>
         )}
-              </div>
-      </section>
-    );
-  }
+      </div>
 
-      return }
+      {selectedItem && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" onClick={() => setSelectedItem(null)}>
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-white/10 bg-[#11111a] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="grid md:grid-cols-[220px_1fr]">
+              <div className="relative aspect-[2/3] md:aspect-auto">
+                <img src={getImage(selectedItem)} alt={getTitle(selectedItem)} className="h-full w-full object-cover" />
+              </div>
+              <div className="p-6">
+                <div className="flex items-start justify-between gap-4">
+                  <h2 className="text-2xl font-bold">{getTitle(selectedItem)}</h2>
+                  <button type="button" onClick={() => setSelectedItem(null)} className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/70">✕</button>
+                </div>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  {selectedItem.year && <span className="rounded-full bg-white/5 px-3 py-1 text-sm text-white/60">{selectedItem.year}</span>}
+                  {getStatus(selectedItem, contentType) && (
+                    <span className={`rounded-full border px-3 py-1 text-sm ${STATUS_COLORS[getStatus(selectedItem, contentType) as ItemStatus]}`}>
+                      {STATUS_ICONS[getStatus(selectedItem, contentType) as ItemStatus]} {STATUS_LABELS[getStatus(selectedItem, contentType) as ItemStatus]}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-6"><RatingStars value={ratings[getContentId(selectedItem, contentType)] ?? null} onRate={(v) => handleRateItem(selectedItem, contentType, v)} size="large" /></div>
+                <div className="mt-4"><RatingDistribution stats={ratingStats[getContentId(selectedItem, contentType)]} size="large" /></div>
+                <p className="mt-6 text-sm text-white/60">{selectedItem.synopsis || "No description available."}</p>
+                {(contentType === "Anime" || contentType === "TV") && (
+                  <EpisodeTracker contentId={getContentId(selectedItem, contentType)} category={contentType} tmdbId={selectedItem.id} fallbackRuntimeMinutes={resolveFallbackRuntimeMinutes(selectedItem)} />
+                )}
+                <button type="button" onClick={() => setSelectedItem(null)} className="mt-6 w-full rounded-xl bg-white py-3 font-semibold text-black">Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}             
