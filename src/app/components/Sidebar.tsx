@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, type ReactElement } from "react";
+
 export type SidebarSection =
   | "dashboard"
   | "browse"
-  | "anime"
   | "watchlist"
   | "ratings"
   | "profile"
@@ -13,12 +13,12 @@ export type SidebarSection =
   | "recommended"
   | "islamic"
   | "countdown"
-  | "favourites"
+  | "favourites";
 
 type NavItem = {
   id: SidebarSection;
   label: string;
-icon: ReactElement;
+  icon: ReactElement;
 };
 
 /*
@@ -28,42 +28,10 @@ icon: ReactElement;
 function IconDashboard() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]">
-      <rect
-        x="3.5"
-        y="3.5"
-        width="7"
-        height="7"
-        rx="1.5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-      />
-      <rect
-        x="13.5"
-        y="3.5"
-        width="7"
-        height="7"
-        rx="1.5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-      />
-      <rect
-        x="3.5"
-        y="13.5"
-        width="7"
-        height="7"
-        rx="1.5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-      />
-      <rect
-        x="13.5"
-        y="13.5"
-        width="7"
-        height="7"
-        rx="1.5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-      />
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
     </svg>
   );
 }
@@ -71,40 +39,8 @@ function IconDashboard() {
 function IconBrowse() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]">
-      <circle
-        cx="10.5"
-        cy="10.5"
-        r="6.5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-      />
-      <path
-        d="M20 20l-4.7-4.7"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function IconAnime() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]">
-      <path
-        d="M4 17c1.8-6 4.6-11 8-11s6.2 5 8 11"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-      <circle cx="9" cy="10" r="1" fill="currentColor" />
-      <circle cx="15" cy="10" r="1" fill="currentColor" />
-      <path
-        d="M4 17h16"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
+      <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M20 20l-4.7-4.7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }
@@ -112,12 +48,7 @@ function IconAnime() {
 function IconWatchlist() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]">
-      <path
-        d="M6 3.5h12v17l-6-4-6 4v-17z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
+      <path d="M6 3.5h12v17l-6-4-6 4v-17z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -125,12 +56,7 @@ function IconWatchlist() {
 function IconRating() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]">
-      <path
-        d="M12 3.5l2.6 5.4 5.9.8-4.3 4.2 1 5.9-5.2-2.8-5.2 2.8 1-5.9-4.3-4.2 5.9-.8L12 3.5z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
+      <path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.2 1 5.9-5.2-2.8-5.2 2.8 1-5.9-4.3-4.2 5.9-.8L12 3.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -138,19 +64,8 @@ function IconRating() {
 function IconProfile() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]">
-      <circle
-        cx="12"
-        cy="8"
-        r="3.5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-      />
-      <path
-        d="M4.5 20c1.4-3.6 4.4-5.5 7.5-5.5s6.1 1.9 7.5 5.5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
+      <circle cx="12" cy="8" r="3.5" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M4.5 20c1.4-3.6 4.4-5.5 7.5-5.5s6.1 1.9 7.5 5.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }
@@ -158,19 +73,8 @@ function IconProfile() {
 function IconImport() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]">
-      <path
-        d="M12 4v11m0 0l-4-4m4 4l4-4"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M4.5 17v2.2c0 .7.6 1.3 1.3 1.3h12.4c.7 0 1.3-.6 1.3-1.3V17"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
+      <path d="M12 4v11m0 0l-4-4m4 4l4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4.5 17v2.2c0 .7.6 1.3 1.3 1.3h12.4c.7 0 1.3-.6 1.3-1.3V17" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }
@@ -178,24 +82,9 @@ function IconImport() {
 function IconLeaderboard() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]">
-      <path
-        d="M8 4h8v6a4 4 0 01-8 0V4z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M8 6H5.5A1.5 1.5 0 004 7.5v1A3.5 3.5 0 007.5 12H8M16 6h2.5A1.5 1.5 0 0120 7.5v1A3.5 3.5 0 0116.5 12H16"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-      <path
-        d="M12 14v3m-3 3h6"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
+      <path d="M8 4h8v6a4 4 0 01-8 0V4z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M8 6H5.5A1.5 1.5 0 004 7.5v1A3.5 3.5 0 007.5 12H8M16 6h2.5A1.5 1.5 0 0120 7.5v1A3.5 3.5 0 0116.5 12H16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M12 14v3m-3 3h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }
@@ -203,22 +92,9 @@ function IconLeaderboard() {
 function IconGift() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]">
-      <rect
-        x="4"
-        y="9"
-        width="16"
-        height="11"
-        rx="1.2"
-        stroke="currentColor"
-        strokeWidth="1.6"
-      />
+      <rect x="4" y="9" width="16" height="11" rx="1.2" stroke="currentColor" strokeWidth="1.6" />
       <path d="M4 9h16v3H4z" stroke="currentColor" strokeWidth="1.6" />
-      <path
-        d="M12 9v11M12 9c-1.5-4-6-4-6-1.2C6 9 12 9 12 9zM12 9c1.5-4 6-4 6-1.2C18 9 12 9 12 9z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
+      <path d="M12 9v11M12 9c-1.5-4-6-4-6-1.2C6 9 12 9 12 9zM12 9c1.5-4 6-4 6-1.2C18 9 12 9 12 9z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -226,16 +102,8 @@ function IconGift() {
 function IconIslamic() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]">
-      <path
-        d="M15.5 4.5A8 8 0 1019.5 18a7 7 0 01-4-13.5z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M18.5 6.5l.7 1.6 1.6.7-1.6.7-.7 1.6-.7-1.6-1.6-.7 1.6-.7.7-1.6z"
-        fill="currentColor"
-      />
+      <path d="M15.5 4.5A8 8 0 1019.5 18a7 7 0 01-4-13.5z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M18.5 6.5l.7 1.6 1.6.7-1.6.7-.7 1.6-.7-1.6-1.6-.7 1.6-.7.7-1.6z" fill="currentColor" />
     </svg>
   );
 }
@@ -243,32 +111,10 @@ function IconIslamic() {
 function IconCountdown() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]">
-      <circle
-        cx="12"
-        cy="13"
-        r="7.5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-      />
-      <path
-        d="M12 9v4l2.6 2.6"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9.5 2.5h5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-      <path
-        d="M12 2.5V4.5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
+      <circle cx="12" cy="13" r="7.5" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M12 9v4l2.6 2.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.5 2.5h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M12 2.5V4.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }
@@ -276,31 +122,7 @@ function IconCountdown() {
 function IconFavourite() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]">
-      <path
-        d="M12 3.5l2.6 5.4 5.9.8-4.3 4.2 1 5.9-5.2-2.8-5.2 2.8 1-5.9-4.3-4.2 5.9-.8L12 3.5z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-        fill="currentColor"
-        fillOpacity="0.15"
-      />
-    </svg>
-  );
-}
-
-
-function IconSocial() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]">
-      <path
-        d="M7 4.5h10A2.5 2.5 0 0119.5 7v10a2.5 2.5 0 01-2.5 2.5H7A2.5 2.5 0 014.5 17V7A2.5 2.5 0 017 4.5z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-      />
-      <path
-        d="M10 9l5 3-5 3V9z"
-        fill="currentColor"
-      />
+      <path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.2 1 5.9-5.2-2.8-5.2 2.8 1-5.9-4.3-4.2 5.9-.8L12 3.5z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" fill="currentColor" fillOpacity="0.15" />
     </svg>
   );
 }
@@ -310,7 +132,6 @@ const NAV_ITEMS: NavItem[] = [
   { id: "countdown", label: "Countdown", icon: <IconCountdown /> },
   { id: "islamic", label: "Islamic Track", icon: <IconIslamic /> },
   { id: "browse", label: "Browse", icon: <IconBrowse /> },
-
   { id: "leaderboard", label: "Leaderboard", icon: <IconLeaderboard /> },
   { id: "recommended", label: "Recommended", icon: <IconGift /> },
   { id: "favourites", label: "Favourites", icon: <IconFavourite /> },
@@ -339,7 +160,6 @@ export default function Sidebar({
 
   function handleSelect(section: SidebarSection) {
     onSelect(section);
-
     if (onMobileClose) {
       onMobileClose();
     }
@@ -449,20 +269,9 @@ export default function Sidebar({
               collapsed ? "justify-center" : ""
             }`}
           >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              className="h-[18px] w-[18px] shrink-0"
-            >
-              <path
-                d="M9 4H6a2 2 0 00-2 2v12a2 2 0 002 2h3M16 16l4-4-4-4M20 12H9"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
+            <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px] shrink-0">
+              <path d="M9 4H6a2 2 0 00-2 2v12a2 2 0 002 2h3M16 16l4-4-4-4M20 12H9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-
             {!collapsed && <span>Sign Out</span>}
           </button>
 
@@ -471,20 +280,8 @@ export default function Sidebar({
             onClick={() => setCollapsed((current) => !current)}
             className="hidden w-full items-center justify-center rounded-[var(--radius-sm)] px-3 py-2 text-white/25 transition-colors duration-200 hover:bg-white/[0.05] hover:text-white/60 md:flex"
           >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              className={`h-4 w-4 transition-transform duration-300 ${
-                collapsed ? "rotate-180" : ""
-              }`}
-            >
-              <path
-                d="M14.5 5l-7 7 7 7"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
+            <svg viewBox="0 0 24 24" fill="none" className={`h-4 w-4 transition-transform duration-300 ${collapsed ? "rotate-180" : ""}`}>
+              <path d="M14.5 5l-7 7 7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
         </div>

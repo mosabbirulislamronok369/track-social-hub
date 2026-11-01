@@ -16,7 +16,6 @@ import Profile from "./components/Profile";
 import IslamicTrack from "./components/IslamicTrack";
 import EventCountdown from "./components/EventCountdown";
 import PrivateWatchlist from "./components/PrivateWatchlist";
-import MALImport from "./components/MALImport";
 import IMDBImport from "./components/IMDBImport";
 import TMDBImport from "./components/TMDBImport";
 
@@ -75,13 +74,12 @@ export default function Home() {
           <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
             <h1 className="text-3xl font-bold text-white mb-6">Import Content</h1>
             <div className="grid gap-8">
-              <MALImport />
               <IMDBImport />
               <TMDBImport />
             </div>
           </div>
         );
-      // "social" কেসটি সম্পূর্ণ বাদ দেওয়া হয়েছে
+      // "social" and "anime" cases are completely removed
       default:
         return <Dashboard />;
     }

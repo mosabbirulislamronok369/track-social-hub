@@ -17,7 +17,6 @@ import WatchTimeChart from "./WatchTimeChart";
 
 type Category =
   | "YouTube"
-  | "Anime"
   | "TV"
   | "Movies"
   | "Social"
@@ -84,7 +83,6 @@ const CARD_MENU_ACTIONS: {
 
 const categories: Category[] = [
   "YouTube",
-  "Anime",
   "TV",
   "Movies",
   "Social",
@@ -93,7 +91,6 @@ const categories: Category[] = [
 
 const emptyStats: Stats = {
   YouTube: 0,
-  Anime: 0,
   TV: 0,
   Movies: 0,
   Social: 0,
@@ -300,7 +297,7 @@ export default function Dashboard() {
   const markNextEpisode = useCallback(
     async (item: ContinueWatchingItem) => {
       if (
-        (item.category !== "Anime" && item.category !== "TV") ||
+        item.category !== "TV" ||
         !item.totalEpisodes ||
         item.totalEpisodes <= 0 ||
         markingEpisodeId === item.contentId
@@ -341,31 +338,17 @@ export default function Dashboard() {
       );
 
       try {
-        if (item.category === "Anime") {
-          await setEpisodeWatched(
-            item.contentId,
-            "Anime",
-            1,
-            {
-              episodeNumber: nextEpisode,
-              name: `Episode ${nextEpisode}`,
-              runtimeSeconds: perEpisodeSeconds,
-            },
-            true,
-          );
-        } else {
-          await setEpisodeWatched(
-            item.contentId,
-            "TV",
-            1,
-            {
-              episodeNumber: nextEpisode,
-              name: `Episode ${nextEpisode}`,
-              runtimeSeconds: perEpisodeSeconds,
-            },
-            true,
-          );
-        }
+        await setEpisodeWatched(
+          item.contentId,
+          "TV",
+          1,
+          {
+            episodeNumber: nextEpisode,
+            name: `Episode ${nextEpisode}`,
+            runtimeSeconds: perEpisodeSeconds,
+          },
+          true,
+        );
 
         const {
           data: { user },
@@ -809,8 +792,7 @@ export default function Dashboard() {
                 const isUpdating = updatingItemId === item.contentId;
                 const isMenuOpen = openMenuId === item.contentId;
 
-                const canQuickMark =
-                  item.category === "Anime" || item.category === "TV";
+                const canQuickMark = item.category === "TV";
 
                 return (
                   <div
@@ -1037,7 +1019,7 @@ export default function Dashboard() {
       </div>
 
       {/* LIVE STATUS */}
-      <div className="glass-panel mt-6 rounded-2xl border-[var(--accent-2-soft)] bg-[var(--accent-2)]/[0.03] p-5 shadow-lg shadow-black/10">
+            <div className="glass-panel mt-6 rounded-2xl border-[var(--accent-2-soft)] bg-[var(--accent-2)]/[0.03] p-5 shadow-lg shadow-black/10">
         <div className="flex items-center gap-2">
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--accent-2)] opacity-75" />
@@ -1134,8 +1116,7 @@ export default function Dashboard() {
 
                 {/* ACTIONS */}
                 <div className="mt-6 grid gap-2">
-                  {(selectedItem.category === "Anime" ||
-                    selectedItem.category === "TV") &&
+                  {selectedItem.category === "TV" &&
                   selectedItem.totalEpisodes ? (
                     <button
                       type="button"

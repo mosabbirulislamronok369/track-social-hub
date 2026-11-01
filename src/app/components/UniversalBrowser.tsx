@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import RatingStars from "./RatingStars";
 import EpisodeTracker from "./EpisodeTracker";
@@ -26,8 +21,8 @@ import {
   removeFavourite,
 } from "../lib/favourites";
 
-type ContentType = "Anime" | "TV" | "Movies" | "YouTube";
-const CONTENT_TYPES: ContentType[] = ["Anime", "TV", "Movies", "YouTube"];
+type ContentType = "TV" | "Movies" | "YouTube";
+const CONTENT_TYPES: ContentType[] = ["TV", "Movies", "YouTube"];
 
 type YouTubeSearchType = "Videos" | "Channels" | "Playlists" | "Link";
 const YOUTUBE_SEARCH_TYPES: YouTubeSearchType[] = ["Videos", "Channels", "Playlists", "Link"];
@@ -113,7 +108,6 @@ function parseDurationToMinutes(duration?: string | null) {
 }
 
 function getWatchTimeSeconds(item: ContentItem, type: ContentType): number {
-  if (type === "Anime") return Math.max(1, Number(item.episodes || 1)) * 24 * 60;
   if (typeof item.runtimeSeconds === "number" && item.runtimeSeconds > 0) return Math.round(item.runtimeSeconds);
   if (typeof item.runtime === "number" && item.runtime > 0) return item.runtime > 10000 ? Math.round(item.runtime) : Math.round(item.runtime * 60);
   if (typeof item.episodes === "number" && item.episodes > 0) {
@@ -197,27 +191,6 @@ function normalizeTV(data: any) {
   return { items, hasNextPage: totalPages ? currentPage < totalPages : items.length >= 20 };
 }
 
-function normalizeAnime(data: any) {
-  const results = data?.data || data?.anime || data?.results || [];
-  const items: ContentItem[] = (Array.isArray(results) ? results : []).map((anime: any) => {
-    const image = anime?.images?.jpg?.large_image_url || anime?.images?.jpg?.image_url || anime?.poster_path || anime?.image || null;
-    return {
-      id: anime.mal_id ?? anime.id,
-      title: anime.title_english || anime.title || "Untitled Anime",
-      subtitle: anime.title || null,
-      image,
-      synopsis: anime.synopsis || null,
-      rating: typeof anime.score === "number" ? anime.score : null,
-      year: anime.year ?? yearFromDate(anime.aired?.from),
-      date: anime.aired?.from ? String(anime.aired.from).slice(0, 10) : null,
-      episodes: typeof anime.episodes === "number" ? anime.episodes : null,
-      episodeRuntime: typeof anime.duration_minutes === "number" ? anime.duration_minutes : null,
-      duration: anime.duration || null,
-    };
-  });
-  return { items, hasNextPage: Boolean(data?.pagination?.has_next_page ?? data?.hasNextPage ?? false) };
-}
-
 function normalizeYouTube(data: any) {
   const results = data?.results || data?.items || data?.videos || [];
   const items: ContentItem[] = results.map((video: any) => {
@@ -255,7 +228,7 @@ function normalizeYouTube(data: any) {
 }
 
 export default function UniversalBrowser() {
-  const [contentType, setContentType] = useState<ContentType>("Anime");
+  const [contentType, setContentType] = useState<ContentType>("TV");
   const [searchQuery, setSearchQuery] = useState("");
   const [youtubeSearchType, setYoutubeSearchType] = useState<YouTubeSearchType>("Videos");
   const [items, setItems] = useState<ContentItem[]>([]);
@@ -318,7 +291,7 @@ export default function UniversalBrowser() {
         result = normalizeMovies(await fetchJson(`/api/tmdb/movies?query=${encodeURIComponent(query)}&page=${currentPage}`));
       } else if (type === "TV") {
         result = normalizeTV(await fetchJson(`/api/tmdb/tv?query=${encodeURIComponent(query)}&page=${currentPage}`));
-      } else if (type === "YouTube") {
+      } else {
         const params = new URLSearchParams();
         if (ytType === "Link") params.set("link", query.trim());
         else {
@@ -326,9 +299,6 @@ export default function UniversalBrowser() {
           params.set("type", ytType === "Channels" ? "channel" : ytType === "Playlists" ? "playlist" : "video");
         }
         result = normalizeYouTube(await fetchJson(`/api/youtube?${params.toString()}`));
-      } else {
-        const params = new URLSearchParams({ q: query.trim(), page: String(currentPage), limit: "24" });
-        result = normalizeAnime(await fetchJson(`/api/anime?${params.toString()}`));
       }
       setItems(result.items);
       setHasNextPage(result.hasNextPage);
@@ -580,38 +550,31 @@ export default function UniversalBrowser() {
                             {formatWatchTime(watchSeconds)}
                           </span>
                         )}
-                        
-                                   {status && (
+                        {status && (
                           <div className={`absolute right-2 top-2 rounded-full border px-2 py-0.5 text-xs font-semibold backdrop-blur-md ${STATUS_COLORS[status]}`}>
                             {STATUS_ICONS[status]}
                           </div>
                         )}
                       </div>
-
                       <div className="p-3">
                         <h2 className="line-clamp-2 min-h-[2.75rem] text-sm font-bold leading-6">
                           {getTitle(video)}
                         </h2>
                         {video.date && <p className="mt-1 text-xs text-white/40">{video.date}</p>}
-
                         <div className="mt-2">
                           <RatingStars value={ratings[getContentId(video, "YouTube")] ?? null} onRate={(value) => handleRateItem(video, "YouTube", value)} />
                         </div>
-
                         <div className="mt-1.5">
                           <RatingDistribution stats={ratingStats[getContentId(video, "YouTube")]} />
                         </div>
-
-                        <div className="mt-3 grid grid-cols-2 gap-2">
+                                                <div className="mt-3 grid grid-cols-2 gap-2">
                           <button type="button" onClick={() => saveItemStatus(video, "YouTube", "completed")} className={`h-9 rounded-lg text-xs font-semibold transition ${status === "completed" ? "border border-emerald-400/30 bg-emerald-500/10 text-emerald-300" : "bg-white text-black hover:bg-white/90"}`}>
                             {status === "completed" ? "✓ Done" : "Mark Complete"}
                           </button>
-
                           <a href={`https://www.youtube.com/watch?v=${video.id}`} target="_blank" rel="noopener noreferrer" className="flex h-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-xs font-semibold text-white transition hover:bg-white/10">
                             Watch
                           </a>
                         </div>
-
                         {status && (
                           <button type="button" disabled={savingId === getContentId(video, "YouTube")} onClick={() => removeItem(video, "YouTube")} className="mt-2 h-8 w-full rounded-lg border border-red-400/30 bg-red-500/10 text-xs font-semibold text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50">
                             🗑 Remove
@@ -653,7 +616,7 @@ export default function UniversalBrowser() {
       <div className="mx-auto max-w-7xl">
         <div className="mb-8">
           <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">Browse</h1>
-          <p className="mt-2 text-white/50">Search Movies, TV, Anime or YouTube</p>
+          <p className="mt-2 text-white/50">Search TV Shows, Movies or YouTube</p>
         </div>
 
         <div className="mb-8 flex flex-col gap-3 sm:flex-row">
@@ -789,7 +752,7 @@ export default function UniversalBrowser() {
                 <div className="mt-6"><RatingStars value={ratings[getContentId(selectedItem, contentType)] ?? null} onRate={(v) => handleRateItem(selectedItem, contentType, v)} size="large" /></div>
                 <div className="mt-4"><RatingDistribution stats={ratingStats[getContentId(selectedItem, contentType)]} size="large" /></div>
                 <p className="mt-6 text-sm text-white/60">{selectedItem.synopsis || "No description available."}</p>
-                {(contentType === "Anime" || contentType === "TV") && (
+                {contentType === "TV" && (
                   <EpisodeTracker contentId={getContentId(selectedItem, contentType)} category={contentType} tmdbId={selectedItem.id} fallbackRuntimeMinutes={resolveFallbackRuntimeMinutes(selectedItem)} />
                 )}
                 <button type="button" onClick={() => setSelectedItem(null)} className="mt-6 w-full rounded-xl bg-white py-3 font-semibold text-black">Close</button>
@@ -800,4 +763,4 @@ export default function UniversalBrowser() {
       )}
     </section>
   );
-}             
+}

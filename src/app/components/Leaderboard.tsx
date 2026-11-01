@@ -21,20 +21,12 @@ import { supabase } from "../lib/supabase";
 
 type Scope = "global" | "friends";
 
-/*
- * "Quran" isn't a LeaderboardCategory from lib/leaderboard — it
- * doesn't come from the watch_sessions-based get_leaderboard()
- * RPC, it's a separate fetch against quran_reading_log (see
- * loadLeaderboard below). Kept as a local union so this file
- * doesn't need to touch lib/leaderboard.ts's type.
- */
 type DisplayCategory = LeaderboardCategory | "Quran";
 
 const CATEGORIES: DisplayCategory[] = [
   "Total",
   "Movies",
   "TV",
-  "Anime",
   "YouTube",
   "Quran",
 ];
@@ -43,18 +35,10 @@ const CATEGORY_LABELS: Record<DisplayCategory, string> = {
   Total: "Total",
   Movies: "Movie",
   TV: "TV",
-  Anime: "Anime",
   YouTube: "YouTube",
   Quran: "🕌 Quran",
 };
 
-/*
- * Cascading Years/Months/Days/Hours/Minutes/Seconds formatter —
- * kept in sync with Dashboard.tsx's formatTime. Leading zero
- * units are skipped (e.g. no years shows starting from months),
- * but once a non-zero unit is found every smaller unit is shown
- * even if it's 0. Years/months use a 365/30-day approximation.
- */
 const YEAR_SECONDS = 365 * 86400;
 const MONTH_SECONDS = 30 * 86400;
 
@@ -103,30 +87,21 @@ const MEDALS = ["🥇", "🥈", "🥉"];
 
 export default function Leaderboard() {
   const [scope, setScope] = useState<Scope>("global");
-  const [category, setCategory] =
-    useState<DisplayCategory>("Total");
+  const [category, setCategory] = useState<DisplayCategory>("Total");
 
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const [currentUserId, setCurrentUserId] = useState <
-    string | null
-  >(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const [friends, setFriends] = useState<FriendProfile[]>([]);
-  const [incomingRequests, setIncomingRequests] = useState <
-    FriendRequest[]
-  >([]);
+  const [incomingRequests, setIncomingRequests] = useState<FriendRequest[]>([]);
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState <
-    FriendProfile[]
-  >([]);
+  const [searchResults, setSearchResults] = useState<FriendProfile[]>([]);
   const [searching, setSearching] = useState(false);
-  const [addingFriendId, setAddingFriendId] = useState <
-    string | null
-  >(null);
+  const [addingFriendId, setAddingFriendId] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -145,19 +120,11 @@ export default function Leaderboard() {
         if (scope === "global") {
           data = await fetchQuranLeaderboard();
         } else {
-          // Friends scope: fetch the friends list directly
-          // here rather than relying on `friends` state, since
-          // that's only populated when scope is already
-          // "friends" and could still be loading in parallel.
           const friendsList = await listFriends();
-          const friendIds = friendsList.map(
-            (friend) => friend.id,
-          );
+          const friendIds = friendsList.map((friend) => friend.id);
 
           data = await fetchQuranLeaderboard(
-            currentUserId
-              ? [...friendIds, currentUserId]
-              : friendIds,
+            currentUserId ? [...friendIds, currentUserId] : friendIds,
           );
         }
       } else {
@@ -171,11 +138,7 @@ export default function Leaderboard() {
     } catch (err) {
       console.error("Failed to load leaderboard:", err);
       setEntries([]);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load leaderboard.",
-      );
+      setError(err instanceof Error ? err.message : "Failed to load leaderboard.");
     } finally {
       setLoading(false);
     }
@@ -183,11 +146,7 @@ export default function Leaderboard() {
 
   useEffect(() => {
     loadLeaderboard();
-
-    // Keep rankings reasonably fresh without hammering Supabase —
-    // re-fetch every 5 minutes instead of on every render/poll.
     const interval = setInterval(loadLeaderboard, 5 * 60 * 1000);
-
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope, category]);
@@ -222,9 +181,7 @@ export default function Leaderboard() {
 
     try {
       const results = await searchUsersByEmail(searchQuery);
-      setSearchResults(
-        results.filter((result) => result.id !== currentUserId),
-      );
+      setSearchResults(results.filter((result) => result.id !== currentUserId));
     } catch (err) {
       console.error("Friend search failed:", err);
     } finally {
@@ -237,15 +194,9 @@ export default function Leaderboard() {
 
     try {
       await sendFriendRequest(friendId);
-      setSearchResults((current) =>
-        current.filter((result) => result.id !== friendId),
-      );
+      setSearchResults((current) => current.filter((result) => result.id !== friendId));
     } catch (err) {
-      alert(
-        err instanceof Error
-          ? err.message
-          : "Failed to send friend request.",
-      );
+      alert(err instanceof Error ? err.message : "Failed to send friend request.");
     } finally {
       setAddingFriendId(null);
     }
@@ -257,11 +208,7 @@ export default function Leaderboard() {
       await loadFriendsData();
       loadLeaderboard();
     } catch (err) {
-      alert(
-        err instanceof Error
-          ? err.message
-          : "Failed to accept request.",
-      );
+      alert(err instanceof Error ? err.message : "Failed to accept request.");
     }
   }
 
@@ -272,9 +219,7 @@ export default function Leaderboard() {
           <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
             Leaderboard
           </h1>
-          <p className="mt-2 text-white/50">
-            See who's watched the most
-          </p>
+          <p className="mt-2 text-white/50">See who's watched the most</p>
         </div>
 
         <div className="mb-6 flex gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-1">
@@ -282,9 +227,7 @@ export default function Leaderboard() {
             type="button"
             onClick={() => setScope("global")}
             className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition ${
-              scope === "global"
-                ? "bg-white text-black"
-                : "text-white/50 hover:text-white/80"
+              scope === "global" ? "bg-white text-black" : "text-white/50 hover:text-white/80"
             }`}
           >
             🌐 Global
@@ -294,9 +237,7 @@ export default function Leaderboard() {
             type="button"
             onClick={() => setScope("friends")}
             className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition ${
-              scope === "friends"
-                ? "bg-white text-black"
-                : "text-white/50 hover:text-white/80"
+              scope === "friends" ? "bg-white text-black" : "text-white/50 hover:text-white/80"
             }`}
           >
             👥 Friends
@@ -330,13 +271,9 @@ export default function Leaderboard() {
               <div className="flex gap-2">
                 <input
                   value={searchQuery}
-                  onChange={(event) =>
-                    setSearchQuery(event.target.value)
-                  }
+                  onChange={(event) => setSearchQuery(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      handleSearch();
-                    }
+                    if (event.key === "Enter") handleSearch();
                   }}
                   placeholder="Search by email..."
                   className="h-11 flex-1 rounded-lg border border-white/10 bg-[#14141d] px-3 text-sm text-white outline-none focus:border-purple-400/60"
@@ -359,9 +296,7 @@ export default function Leaderboard() {
                       key={result.id}
                       className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.02] px-4 py-2.5"
                     >
-                      <span className="text-sm">
-                        {result.displayName}
-                      </span>
+                      <span className="text-sm">{result.displayName}</span>
 
                       <button
                         type="button"
@@ -369,9 +304,7 @@ export default function Leaderboard() {
                         onClick={() => handleAddFriend(result.id)}
                         className="rounded-lg border border-purple-400/30 bg-purple-500/10 px-3 py-1.5 text-xs font-semibold text-purple-300 transition hover:bg-purple-500/20 disabled:opacity-50"
                       >
-                        {addingFriendId === result.id
-                          ? "Sending..."
-                          : "+ Add"}
+                        {addingFriendId === result.id ? "Sending..." : "+ Add"}
                       </button>
                     </div>
                   ))}
@@ -391,15 +324,11 @@ export default function Leaderboard() {
                       key={request.id}
                       className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.02] px-4 py-2.5"
                     >
-                      <span className="text-sm">
-                        {request.displayName}
-                      </span>
+                      <span className="text-sm">{request.displayName}</span>
 
                       <button
                         type="button"
-                        onClick={() =>
-                          handleAcceptRequest(request.id)
-                        }
+                        onClick={() => handleAcceptRequest(request.id)}
                         className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/20"
                       >
                         Accept
@@ -410,13 +339,11 @@ export default function Leaderboard() {
               </div>
             )}
 
-            {friends.length === 0 &&
-              incomingRequests.length === 0 && (
-                <p className="text-sm text-white/40">
-                  You haven't added any friends yet. Search for
-                  one above to get started.
-                </p>
-              )}
+            {friends.length === 0 && incomingRequests.length === 0 && (
+              <p className="text-sm text-white/40">
+                You haven't added any friends yet. Search for one above to get started.
+              </p>
+            )}
           </div>
         )}
 
@@ -429,10 +356,7 @@ export default function Leaderboard() {
         {loading && (
           <div className="space-y-2">
             {Array.from({ length: 6 }).map((_, index) => (
-              <div
-                key={index}
-                className="h-16 animate-pulse rounded-xl bg-white/[0.03]"
-              />
+              <div key={index} className="h-16 animate-pulse rounded-xl bg-white/[0.03]" />
             ))}
           </div>
         )}
@@ -440,8 +364,7 @@ export default function Leaderboard() {
         {!loading && entries.length > 0 && (
           <div className="space-y-2">
             {entries.map((entry, index) => {
-              const isCurrentUser =
-                entry.userId === currentUserId;
+              const isCurrentUser = entry.userId === currentUserId;
 
               return (
                 <div
@@ -460,9 +383,7 @@ export default function Leaderboard() {
                     <p className="font-semibold">
                       {entry.displayName}
                       {isCurrentUser && (
-                        <span className="ml-2 text-xs text-purple-300">
-                          (you)
-                        </span>
+                        <span className="ml-2 text-xs text-purple-300">(you)</span>
                       )}
                     </p>
                   </div>
@@ -478,9 +399,7 @@ export default function Leaderboard() {
 
         {!loading && !error && entries.length === 0 && (
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-12 text-center">
-            <p className="text-lg font-semibold">
-              No rankings yet
-            </p>
+            <p className="text-lg font-semibold">No rankings yet</p>
 
             <p className="mt-2 text-sm text-white/40">
               {scope === "friends"

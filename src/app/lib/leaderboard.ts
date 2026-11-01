@@ -4,7 +4,6 @@ export type LeaderboardCategory =
   | "Total"
   | "Movies"
   | "TV"
-  | "Anime"
   | "YouTube";
 
 export type LeaderboardEntry = {
