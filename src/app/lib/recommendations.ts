@@ -1,11 +1,16 @@
 import { supabase } from "./supabase";
+import {
+  ACTIVE_MEDIA_CATEGORIES,
+  isActiveMediaCategory,
+  type ActiveMediaCategory,
+} from "./categories";
 
 export type Recommendation = {
   id: string;
   fromUserId: string;
   fromDisplayName: string;
   fromEmail: string;
-  contentType: string;
+  contentType: ActiveMediaCategory;
   contentId: string;
   contentTitle: string;
   posterPath: string | null;
@@ -13,6 +18,25 @@ export type Recommendation = {
   isRead: boolean;
   isWatched: boolean;
   createdAt: string;
+};
+
+type ProfileRow = {
+  id: string;
+  email: string | null;
+  display_name: string | null;
+};
+
+type RecommendationRow = {
+  id: string;
+  from_user_id: string;
+  content_type: string;
+  content_id: string;
+  content_title: string;
+  poster_path: string | null;
+  message: string | null;
+  is_read: boolean;
+  is_watched: boolean;
+  created_at: string;
 };
 
 async function fetchProfilesByIds(
@@ -33,7 +57,7 @@ async function fetchProfilesByIds(
 
   const map: Record<string, { email: string; displayName: string }> = {};
 
-  (data || []).forEach((row: any) => {
+  (data || []).forEach((row: ProfileRow) => {
     map[row.id] = {
       email: row.email || "",
       displayName: row.display_name || row.email || "Unknown",
@@ -46,11 +70,11 @@ async function fetchProfilesByIds(
 /*
  * Sends a recommendation from the current user to a friend.
  * contentId should match the same convention used elsewhere
- * in the app (e.g. `movies-1234`, `tv-5678`, `anime-999`).
+ * in the app (e.g. `movies-1234`, `tv-5678`).
  */
 export async function sendRecommendation(params: {
   toUserId: string;
-  contentType: string;
+  contentType: ActiveMediaCategory;
   contentId: string;
   contentTitle: string;
   posterPath?: string | null;
@@ -62,6 +86,10 @@ export async function sendRecommendation(params: {
 
   if (!user) {
     throw new Error("Please login first.");
+  }
+
+  if (!isActiveMediaCategory(params.contentType)) {
+    throw new Error("Only TV, Movies, and YouTube can be recommended.");
   }
 
   if (user.id === params.toUserId) {
@@ -102,19 +130,23 @@ export async function listRecommendationsForMe(): Promise<Recommendation[]> {
       "id,from_user_id,content_type,content_id,content_title,poster_path,message,is_read,is_watched,created_at",
     )
     .eq("to_user_id", user.id)
+    .in("content_type", [...ACTIVE_MEDIA_CATEGORIES])
     .order("created_at", { ascending: false });
 
   if (error) {
     throw error;
   }
 
-  const rows = data || [];
-
-  const profilesMap = await fetchProfilesByIds(
-    rows.map((row: any) => row.from_user_id),
+  const rows = (data || []) as RecommendationRow[];
+  const activeRows = rows.filter((row) =>
+    isActiveMediaCategory(row.content_type),
   );
 
-  return rows.map((row: any) => {
+  const profilesMap = await fetchProfilesByIds(
+    activeRows.map((row) => row.from_user_id),
+  );
+
+  return activeRows.map((row) => {
     const profile = profilesMap[row.from_user_id];
 
     return {
@@ -122,7 +154,7 @@ export async function listRecommendationsForMe(): Promise<Recommendation[]> {
       fromUserId: row.from_user_id,
       fromDisplayName: profile ? profile.displayName : "Unknown",
       fromEmail: profile ? profile.email : "",
-      contentType: row.content_type,
+      contentType: row.content_type as ActiveMediaCategory,
       contentId: row.content_id,
       contentTitle: row.content_title,
       posterPath: row.poster_path,
@@ -183,6 +215,7 @@ export async function countUnreadRecommendations(): Promise<number> {
     .from("recommendations")
     .select("id", { count: "exact", head: true })
     .eq("to_user_id", user.id)
+    .in("content_type", [...ACTIVE_MEDIA_CATEGORIES])
     .eq("is_read", false);
 
   if (error) {
@@ -195,13 +228,13 @@ export async function countUnreadRecommendations(): Promise<number> {
 /*
  * Best-effort runtime lookup for a recommended Movie/TV title,
  * via the same /api/tmdb/*-details routes UniversalBrowser
- * uses (fetchAccurateRuntimeSeconds). Anime/YouTube have no
- * equivalent lookup here, so those fall back to 0 seconds —
+ * uses (fetchAccurateRuntimeSeconds). YouTube has no
+ * equivalent lookup here, so it falls back to 0 seconds —
  * the item still shows up on the Dashboard, just without an
  * estimated runtime until edited from Browse.
  */
 async function fetchRecommendationRuntimeSeconds(
-  contentType: string,
+  contentType: ActiveMediaCategory,
   rawId: string,
 ): Promise<number> {
   try {

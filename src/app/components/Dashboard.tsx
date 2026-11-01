@@ -12,15 +12,15 @@ import { supabase } from "../lib/supabase";
 import {
   setEpisodeWatched,
 } from "../lib/episodeProgress";
+import {
+  ACTIVE_MEDIA_CATEGORIES,
+  isActiveMediaCategory,
+  type ActiveMediaCategory,
+} from "../lib/categories";
 import { fetchTodayQuranLog } from "../lib/quranTrack";
 import WatchTimeChart from "./WatchTimeChart";
 
-type Category =
-  | "YouTube"
-  | "TV"
-  | "Movies"
-  | "Social"
-  | "Private";
+type Category = ActiveMediaCategory;
 
 type Stats = Record<Category, number>;
 
@@ -43,6 +43,24 @@ type ContinueWatchingItem = {
 };
 
 type CardMenuStatus = "completed" | "on_hold" | "dropped";
+
+type DashboardStatsRow = {
+  category: string;
+  total_seconds: number | string | null;
+  rewatch_seconds: number | string | null;
+};
+
+type ContinueWatchingRow = {
+  content_id: string;
+  category: string;
+  title: string;
+  image_url: string | null;
+  status: string;
+  estimated_seconds: number | string | null;
+  updated_at: string;
+  current_episode: number | string | null;
+  total_episodes: number | string | null;
+};
 
 const CONTINUE_WATCHING_STATUSES: ContinueWatchingStatus[] = [
   "watching",
@@ -81,20 +99,12 @@ const CARD_MENU_ACTIONS: {
   { key: "remove", label: "Remove", icon: "🗑" },
 ];
 
-const categories: Category[] = [
-  "YouTube",
-  "TV",
-  "Movies",
-  "Social",
-  "Private",
-];
+const categories: Category[] = [...ACTIVE_MEDIA_CATEGORIES];
 
 const emptyStats: Stats = {
   YouTube: 0,
   TV: 0,
   Movies: 0,
-  Social: 0,
-  Private: 0,
 };
 
 const YEAR_SECONDS = 365 * 86400;
@@ -210,22 +220,23 @@ export default function Dashboard() {
 
       const nextStats: Stats = { ...emptyStats };
       let rewatchTotal = 0;
-      let rawTotal = 0;
 
-      for (const row of data ?? []) {
-        const category = row.category as Category;
+      for (const row of (data ?? []) as DashboardStatsRow[]) {
+        const category = row.category;
         const seconds = Number(row.total_seconds ?? 0);
 
-        if (categories.includes(category)) {
-          nextStats[category] = seconds;
+        if (isActiveMediaCategory(category)) {
+          nextStats[category] += seconds;
+          rewatchTotal += Number(row.rewatch_seconds ?? 0);
         }
-
-        rewatchTotal = Number(row.rewatch_seconds ?? 0);
-        rawTotal = Number(row.raw_total_seconds ?? 0);
       }
 
+      const rawTotal = Object.values(nextStats).reduce(
+        (sum, seconds) => sum + seconds,
+        0,
+      );
       setStats(nextStats);
-      setRewatchSeconds(rewatchTotal);
+      setRewatchSeconds(Math.min(rewatchTotal, rawTotal));
       setRawTotalSeconds(rawTotal);
     } catch (error) {
       console.error("Dashboard error:", error);
@@ -257,6 +268,7 @@ export default function Dashboard() {
           "content_id,category,title,image_url,status,estimated_seconds,updated_at,current_episode,total_episodes",
         )
         .eq("user_id", user.id)
+        .in("category", [...ACTIVE_MEDIA_CATEGORIES])
         .in("status", CONTINUE_WATCHING_STATUSES)
         .order("updated_at", { ascending: false })
         .limit(12);
@@ -272,7 +284,7 @@ export default function Dashboard() {
       }
 
       setContinueWatching(
-        (data ?? []).map((row: any) => ({
+        (data ?? []).map((row: ContinueWatchingRow) => ({
           contentId: row.content_id,
           category: row.category as Category,
           title: row.title,
@@ -399,7 +411,8 @@ export default function Dashboard() {
     }
 
     return (data ?? []).reduce(
-      (sum, row: any) => sum + Number(row.total_seconds ?? 0),
+      (sum, row: { total_seconds: number | null }) =>
+        sum + Number(row.total_seconds ?? 0),
       0,
     );
   }
@@ -547,8 +560,14 @@ export default function Dashboard() {
         }
 
         const creditOnlySessionIds = (sessionRows ?? [])
-          .filter((row: any) => row.started_at === row.last_heartbeat)
-          .map((row: any) => row.id);
+          .filter(
+            (row: {
+              id: string;
+              started_at: string;
+              last_heartbeat: string;
+            }) => row.started_at === row.last_heartbeat,
+          )
+          .map((row: { id: string }) => row.id);
 
         if (creditOnlySessionIds.length > 0) {
           const { error: deleteSessionsError } = await supabase
@@ -586,6 +605,8 @@ export default function Dashboard() {
   );
 
   useEffect(() => {
+    // These functions start asynchronous loads and update state when requests finish.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadStats();
     loadContinueWatching();
     loadQuran();
@@ -635,7 +656,7 @@ export default function Dashboard() {
       supabase.removeChannel(statsChannel);
       supabase.removeChannel(watchlistChannel);
     };
-  }, [loadStats, loadContinueWatching]);
+  }, [loadStats, loadContinueWatching, loadQuran]);
 
   useEffect(() => {
     if (!openMenuId) return;
@@ -912,43 +933,9 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* CATEGORY CARDS */}
+      {/* CATEGORY AND REWATCH CARDS */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {categories.map((category) => {
-          if (category === "Social") {
-            const percentage =
-              totalSeconds > 0
-                ? Math.round((rewatchSeconds / totalSeconds) * 100)
-                : 0;
-
-            const barWidth = Math.round(
-              (rewatchSeconds / maxCategorySeconds) * 100,
-            );
-
-            return (
-              <div
-                key="rewatch-time"
-                className="glass-panel group rounded-2xl border border-white/10 p-5 shadow-lg shadow-black/10 transition duration-300 hover:-translate-y-0.5 hover:border-white/15"
-              >
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-white">Total Re Watch Time</h3>
-                  <span className="text-sm text-white/40">{percentage}%</span>
-                </div>
-
-                <div className="mt-4 text-2xl font-bold text-white">
-                  {loading ? "..." : formatTime(rewatchSeconds)}
-                </div>
-
-                <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/[0.06]">
-                  <div
-                    className="h-full rounded-full bg-[linear-gradient(90deg,var(--accent)_0%,var(--accent-2)_100%)] transition-all duration-500"
-                    style={{ width: `${barWidth}%` }}
-                  />
-                </div>
-              </div>
-            );
-          }
-
           const seconds = stats[category];
           const percentage =
             totalSeconds > 0 ? Math.round((seconds / totalSeconds) * 100) : 0;
@@ -977,6 +964,32 @@ export default function Dashboard() {
             </div>
           );
         })}
+
+        <div className="glass-panel group rounded-2xl border border-white/10 p-5 shadow-lg shadow-black/10 transition duration-300 hover:-translate-y-0.5 hover:border-white/15">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-white">Total Re Watch Time</h3>
+            <span className="text-sm text-white/40">
+              {totalSeconds > 0
+                ? Math.round((rewatchSeconds / totalSeconds) * 100)
+                : 0}%
+            </span>
+          </div>
+
+          <div className="mt-4 text-2xl font-bold text-white">
+            {loading ? "..." : formatTime(rewatchSeconds)}
+          </div>
+
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/[0.06]">
+            <div
+              className="h-full rounded-full bg-[linear-gradient(90deg,var(--accent)_0%,var(--accent-2)_100%)] transition-all duration-500"
+              style={{
+                width: `${Math.round(
+                  (rewatchSeconds / maxCategorySeconds) * 100,
+                )}%`,
+              }}
+            />
+          </div>
+        </div>
       </div>
 
       {/* QURAN READING */}

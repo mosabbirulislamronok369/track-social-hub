@@ -6,7 +6,6 @@ import {
   type EpisodeInfo,
   type TrackedCategory,
   createArc,
-  fetchAnimeEpisodes,
   fetchArcs,
   fetchTvSeasonEpisodes,
   fetchWatchedEpisodes,
@@ -20,6 +19,14 @@ type SeasonMeta = {
   seasonNumber: number;
   name: string;
   episodeCount: number | null;
+};
+
+type SeasonResponse = {
+  seasons?: {
+    seasonNumber: number;
+    name: string;
+    episodeCount: number | null;
+  }[];
 };
 
 function formatMinutes(seconds: number) {
@@ -42,7 +49,7 @@ export default function EpisodeTracker({
   const [seasons, setSeasons] = useState<SeasonMeta[]>([]);
   const [selectedSeason, setSelectedSeason] = useState(1);
   const [seasonsLoading, setSeasonsLoading] = useState(
-    category === "TV" || category === "Anime",
+    category === "TV",
   );
 
   const [episodes, setEpisodes] = useState<EpisodeInfo[]>([]);
@@ -65,24 +72,18 @@ export default function EpisodeTracker({
   const [markRangeTo, setMarkRangeTo] = useState("");
   const [markingRange, setMarkingRange] = useState(false);
 
-  // Anime এবং TV উভয়ের জন্যই TMDB থেকে সিজন লোড হবে
   useEffect(() => {
-    if (category !== "TV" && category !== "Anime") return;
+    if (category !== "TV") return;
 
     let cancelled = false;
-    setSeasonsLoading(true);
 
     fetch(`/api/tmdb/tv-details?id=${encodeURIComponent(String(tmdbId))}`, {
       cache: "no-store",
     })
       .then((res) => res.json())
-      .then((data) => {
+      .then((data: SeasonResponse) => {
         if (cancelled) return;
-        const list: SeasonMeta[] = (data?.seasons || []).map((s: any) => ({
-          seasonNumber: s.seasonNumber,
-          name: s.name,
-          episodeCount: s.episodeCount,
-        }));
+        const list: SeasonMeta[] = data.seasons ?? [];
         setSeasons(list);
         if (list.length > 0) setSelectedSeason(list[0].seasonNumber);
       })
@@ -101,22 +102,11 @@ export default function EpisodeTracker({
     setEpisodesError("");
 
     try {
-      let episodeList: EpisodeInfo[];
-
-      // Anime এবং TV উভয়ের জন্যই fetchTvSeasonEpisodes ব্যবহার হবে
-      if (category === "TV" || category === "Anime") {
-        episodeList = await fetchTvSeasonEpisodes(
-          tmdbId,
-          selectedSeason,
-          fallbackRuntimeMinutes,
-        );
-      } else {
-        const fallbackSeconds =
-          typeof fallbackRuntimeMinutes === "number" && fallbackRuntimeMinutes > 0
-            ? Math.round(fallbackRuntimeMinutes * 60)
-            : 24 * 60;
-        episodeList = await fetchAnimeEpisodes(tmdbId, fallbackSeconds);
-      }
+      const episodeList = await fetchTvSeasonEpisodes(
+        tmdbId,
+        selectedSeason,
+        fallbackRuntimeMinutes,
+      );
 
       setEpisodes(episodeList);
 
@@ -135,10 +125,12 @@ export default function EpisodeTracker({
     } finally {
       setEpisodesLoading(false);
     }
-  }, [category, tmdbId, selectedSeason, fallbackRuntimeMinutes, contentId]);
+  }, [tmdbId, selectedSeason, fallbackRuntimeMinutes, contentId]);
 
   useEffect(() => {
-    if ((category === "TV" || category === "Anime") && seasonsLoading) return;
+    if (category === "TV" && seasonsLoading) return;
+    // The loader performs asynchronous requests and updates state after they resolve.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadSeasonData();
   }, [category, seasonsLoading, selectedSeason, loadSeasonData]);
 
@@ -301,7 +293,7 @@ export default function EpisodeTracker({
         </h3>
 
         <div className="flex flex-wrap items-center gap-2">
-          {(category === "TV" || category === "Anime") && seasons.length > 0 && (
+          {category === "TV" && seasons.length > 0 && (
             <select
               value={selectedSeason}
               onChange={(e) => setSelectedSeason(Number(e.target.value))}
@@ -504,7 +496,7 @@ export default function EpisodeTracker({
           {episodes.length === 0 && (
             <p className="py-4 text-center text-xs text-white/30">
               No episodes found for this{" "}
-              {category === "TV" || category === "Anime" ? "season" : "title"}.
+              season.
             </p>
           )}
         </div>

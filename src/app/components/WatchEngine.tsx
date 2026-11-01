@@ -5,10 +5,8 @@ import { supabase } from "../lib/supabase";
 
 type WatchCategory =
   | "YouTube"
-  | "Anime"
   | "TV"
   | "Movies"
-  | "Social"
   | "Private";
 
 type WatchEngineProps = {
@@ -189,6 +187,8 @@ export default function WatchEngine({
   useEffect(() => {
     mountedRef.current = true;
 
+    // Starts the session request; its state updates happen after the request resolves.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     startSession();
 
     return () => {

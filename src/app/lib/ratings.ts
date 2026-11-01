@@ -1,4 +1,9 @@
 import { supabase } from "./supabase";
+import {
+  ACTIVE_MEDIA_CATEGORIES,
+  isActiveMediaCategory,
+  type ActiveMediaCategory,
+} from "./categories";
 
 /* ============================================================
    RATING LEVELS (1-10)
@@ -53,7 +58,7 @@ export function formatRatingLabel(
 
 export type RatingRow = {
   content_id: string;
-  category: string;
+  category: ActiveMediaCategory;
   title: string;
   image: string | null;
   rating: number;
@@ -65,7 +70,7 @@ export type RatingEntry = RatingRow & {
 
 /*
  * Loads a simple map of contentId -> rating for the
- * current user. Used by UniversalBrowser/AnimeBrowser
+ * current user. Used by UniversalBrowser
  * to show existing ratings on cards.
  */
 export async function fetchAllRatings(): Promise<
@@ -81,8 +86,9 @@ export async function fetchAllRatings(): Promise<
 
   const { data, error } = await supabase
     .from("ratings")
-    .select("content_id,rating")
-    .eq("user_id", user.id);
+    .select("content_id,rating,category")
+    .eq("user_id", user.id)
+    .in("category", [...ACTIVE_MEDIA_CATEGORIES]);
 
   if (error) {
     console.error(
@@ -123,6 +129,7 @@ export async function fetchAllRatingRows(): Promise<
       "content_id,category,title,image,rating,updated_at",
     )
     .eq("user_id", user.id)
+    .in("category", [...ACTIVE_MEDIA_CATEGORIES])
     .order("rating", { ascending: false })
     .order("updated_at", { ascending: false });
 
@@ -161,6 +168,7 @@ export async function fetchTopRatings(
       "content_id,category,title,image,rating,updated_at",
     )
     .eq("user_id", user.id)
+    .in("category", [...ACTIVE_MEDIA_CATEGORIES])
     .order("rating", { ascending: false })
     .order("updated_at", { ascending: false })
     .limit(limit);
@@ -207,6 +215,7 @@ export async function searchRatings(
       "content_id,category,title,image,rating,updated_at",
     )
     .eq("user_id", user.id)
+    .in("category", [...ACTIVE_MEDIA_CATEGORIES])
     .ilike("title", `%${trimmed}%`)
     .order("rating", { ascending: false })
     .order("updated_at", { ascending: false })
@@ -231,11 +240,15 @@ export async function searchRatings(
  */
 export async function upsertRating(params: {
   contentId: string;
-  category: string;
+  category: ActiveMediaCategory;
   title: string;
   image?: string | null;
   rating: number;
 }) {
+  if (!isActiveMediaCategory(params.category)) {
+    throw new Error("Ratings are only available for TV, Movies, and YouTube.");
+  }
+
   const {
     data: { user },
   } = await supabase.auth.getUser();

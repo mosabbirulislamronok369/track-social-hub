@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabase";
 
 // Components
@@ -20,7 +21,7 @@ import IMDBImport from "./components/IMDBImport";
 import TMDBImport from "./components/TMDBImport";
 
 export default function Home() {
-  const [session, setSession] = useState<any>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState<SidebarSection>("dashboard");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -79,7 +80,6 @@ export default function Home() {
             </div>
           </div>
         );
-      // "social" and "anime" cases are completely removed
       default:
         return <Dashboard />;
     }

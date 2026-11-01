@@ -1,7 +1,7 @@
 {
   "name": "Track Social Hub",
   "short_name": "TrackHub",
-  "description": "Track Social Hub - A premium watch tracking and social media platform",
+  "description": "Track Social Hub - A premium watch tracking platform",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#070711",

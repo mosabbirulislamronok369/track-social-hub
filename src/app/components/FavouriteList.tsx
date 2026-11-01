@@ -11,6 +11,7 @@ import {
   removeFavourite,
   reorderFavourites,
 } from "../lib/favourites";
+import { FAVOURITE_CATEGORIES } from "../lib/categories";
 
 /* ============================================================
    TYPES
@@ -23,11 +24,22 @@ type SearchResult = {
   image?: string | null;
 };
 
-const SEARCH_TYPES: FavouriteContentType[] = [
-  "Anime",
-  "TV",
-  "Movies",
-];
+type SearchApiItem = {
+  tmdb_id?: string | number | null;
+  id?: string | number;
+  title?: string | null;
+  name?: string | null;
+  original_title?: string | null;
+  original_name?: string | null;
+  poster_path?: string | null;
+};
+
+type SearchApiResponse = {
+  results?: SearchApiItem[] | null;
+  error?: string;
+};
+
+const SEARCH_TYPES: FavouriteContentType[] = [...FAVOURITE_CATEGORIES];
 
 /* ============================================================
    RANK STYLING
@@ -68,49 +80,40 @@ const MEDAL_STYLES: Record<
    normalization lives in UniversalBrowser.tsx)
 ============================================================ */
 
-function normalizeMovieResults(data: any): SearchResult[] {
+function normalizeMovieResults(data: SearchApiResponse): SearchResult[] {
   const results = data?.results || [];
 
-  return results.map((movie: any) => ({
-    id: movie.tmdb_id ?? movie.id,
-    title: movie.title || movie.name || "Untitled Movie",
-    subtitle: movie.original_title || "Movie",
-    image: movie.poster_path
-      ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
-      : null,
-  }));
+  return results.flatMap((movie) => {
+    const id = movie.tmdb_id ?? movie.id;
+    if (id === undefined) return [];
+
+    return [{
+      id,
+      title: movie.title || movie.name || "Untitled Movie",
+      subtitle: movie.original_title || "Movie",
+      image: movie.poster_path
+        ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
+        : null,
+    }];
+  });
 }
 
-function normalizeTVResults(data: any): SearchResult[] {
+function normalizeTVResults(data: SearchApiResponse): SearchResult[] {
   const results = data?.results || [];
 
-  return results.map((show: any) => ({
-    id: show.tmdb_id ?? show.id,
-    title: show.name || show.original_name || "Untitled TV Show",
-    subtitle: show.original_name || "TV Show",
-    image: show.poster_path
-      ? `https://image.tmdb.org/t/p/w500${show.poster_path}`
-      : null,
-  }));
-}
+  return results.flatMap((show) => {
+    const id = show.tmdb_id ?? show.id;
+    if (id === undefined) return [];
 
-function normalizeAnimeResults(data: any): SearchResult[] {
-  const results = data?.data || data?.anime || data?.results || [];
-
-  return (Array.isArray(results) ? results : []).map(
-    (anime: any) => ({
-      id: anime.mal_id ?? anime.id,
-      title:
-        anime.title_english || anime.title || "Untitled Anime",
-      subtitle: anime.title || null,
-      image:
-        anime?.images?.jpg?.large_image_url ||
-        anime?.images?.jpg?.image_url ||
-        anime?.poster_path ||
-        anime?.image ||
-        null,
-    }),
-  );
+    return [{
+      id,
+      title: show.name || show.original_name || "Untitled TV Show",
+      subtitle: show.original_name || "TV Show",
+      image: show.poster_path
+        ? `https://image.tmdb.org/t/p/w500${show.poster_path}`
+        : null,
+    }];
+  });
 }
 
 function getContentId(
@@ -129,7 +132,7 @@ export default function FavouriteList() {
   const [error, setError] = useState("");
 
   const [searchType, setSearchType] =
-    useState<FavouriteContentType>("Anime");
+    useState<FavouriteContentType>("TV");
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<
@@ -170,6 +173,8 @@ export default function FavouriteList() {
   }, []);
 
   useEffect(() => {
+    // Initial asynchronous load; state changes occur after Supabase responds.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadFavourites();
 
     function handleExternalChange() {
@@ -218,7 +223,7 @@ export default function FavouriteList() {
           { cache: "no-store" },
         );
 
-        const data = await res.json();
+        const data = (await res.json()) as SearchApiResponse;
 
         if (!res.ok) {
           throw new Error(
@@ -227,7 +232,7 @@ export default function FavouriteList() {
         }
 
         results = normalizeMovieResults(data);
-      } else if (searchType === "TV") {
+      } else {
         const res = await fetch(
           `/api/tmdb/tv?query=${encodeURIComponent(
             searchQuery.trim(),
@@ -235,31 +240,13 @@ export default function FavouriteList() {
           { cache: "no-store" },
         );
 
-        const data = await res.json();
+        const data = (await res.json()) as SearchApiResponse;
 
         if (!res.ok) {
           throw new Error("TV search failed.");
         }
 
         results = normalizeTVResults(data);
-      } else {
-        const params = new URLSearchParams({
-          q: searchQuery.trim(),
-          page: "1",
-          limit: "24",
-        });
-
-        const res = await fetch(`/api/anime?${params.toString()}`, {
-          cache: "no-store",
-        });
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error("Anime search failed.");
-        }
-
-        results = normalizeAnimeResults(data);
       }
 
       setSearchResults(results.slice(0, 12));
@@ -448,8 +435,8 @@ export default function FavouriteList() {
             My Favourite List
           </h1>
           <p className="mt-2 text-white/50">
-            Rank your all-time favourite Anime, TV shows and
-            Movies. Top 3 get a special spot.
+            Rank your all-time favourite TV shows and movies.
+            Top 3 get a special spot.
           </p>
         </div>
 

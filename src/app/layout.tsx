@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Track Social Hub",
-  description: "Track Social Hub - A premium watch tracking and social media platform",
+  description: "Track Social Hub - A premium watch tracking platform",
   manifest: "/manifest.json",
 };
 

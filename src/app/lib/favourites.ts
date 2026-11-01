@@ -1,17 +1,17 @@
 import { supabase } from "./supabase";
+import { FAVOURITE_CATEGORIES, type FavouriteCategory } from "./categories";
 
 /* ============================================================
    FAVOURITE LIST
-   Ranked list of up to MAX_FAVOURITES items (Anime / TV /
-   Movies only — YouTube is excluded). Backed by a single
+   Ranked list of up to MAX_FAVOURITES TV and movie items.
+   YouTube is excluded. Backed by a single
    `favourites` table:
 
      create table favourites (
        id          bigint generated always as identity primary key,
        user_id     uuid not null references auth.users(id) on delete cascade,
-       content_id  text not null,   -- e.g. "anime-123" (matches
-                                     -- UniversalBrowser's getContentId)
-       content_type text not null,  -- "Anime" | "TV" | "Movies"
+       content_id  text not null,   -- matches UniversalBrowser's getContentId
+       content_type text not null,  -- "TV" | "Movies"
        title       text not null,
        subtitle    text,
        image       text,
@@ -29,7 +29,7 @@ import { supabase } from "./supabase";
 
 export const MAX_FAVOURITES = 50;
 
-export type FavouriteContentType = "Anime" | "TV" | "Movies";
+export type FavouriteContentType = FavouriteCategory;
 
 export type FavouriteItem = {
   contentId: string;
@@ -87,6 +87,7 @@ export async function fetchFavourites(): Promise<FavouriteItem[]> {
       "content_id, content_type, title, subtitle, image, rank",
     )
     .eq("user_id", user.id)
+    .in("content_type", [...FAVOURITE_CATEGORIES])
     .order("rank", { ascending: true });
 
   if (error) {
@@ -115,6 +116,10 @@ export async function addFavourite(item: {
   subtitle?: string | null;
   image?: string | null;
 }): Promise<void> {
+  if (!FAVOURITE_CATEGORIES.includes(item.contentType)) {
+    throw new Error("Only TV shows and movies can be favourited.");
+  }
+
   const userId = await getUserId();
 
   const { count, error: countError } = await supabase

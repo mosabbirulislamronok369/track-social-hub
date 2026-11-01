@@ -162,20 +162,16 @@ function GoalRing({
  * the app (Dashboard cards, WatchEngine's category prop).
  */
 const CATEGORY_COLORS: Record<string, string> = {
-  Anime: "#a855f7",
   TV: "#3b82f6",
   Movies: "#ec4899",
   YouTube: "#ef4444",
-  Social: "#22c55e",
-  Private: "#6b7280",
 };
 
 const FALLBACK_SLICE_COLOR = "#94a3b8";
 
 /*
  * Pie chart showing what percentage of total watch time went
- * to each content category (Anime / TV / Movies / YouTube /
- * etc). Pure SVG — one <path> arc per category, no charting
+ * to each active media category. Pure SVG — one <path> arc per category, no charting
  * library needed.
  */
 function CategoryPieChart({
@@ -240,17 +236,22 @@ function CategoryPieChart({
     );
   }
 
-  let cumulativeAngle = -90; // start at 12 o'clock
-
   const slices = data
     .filter((d) => d.seconds > 0)
-    .map((d) => {
+    .reduce<
+      {
+        category: string;
+        percent: number;
+        path: string;
+        color: string;
+        endAngle: number;
+      }[]
+    >((result, d) => {
       const percent = (d.seconds / total) * 100;
       const angle = (d.seconds / total) * 360;
 
-      const startAngle = cumulativeAngle;
-      const endAngle = cumulativeAngle + angle;
-      cumulativeAngle = endAngle;
+      const startAngle = result.at(-1)?.endAngle ?? -90;
+      const endAngle = startAngle + angle;
 
       const largeArc = angle > 180 ? 1 : 0;
 
@@ -264,14 +265,16 @@ function CategoryPieChart({
 
       const path = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
 
-      return {
+      result.push({
         category: d.category,
         percent,
         path,
         color:
           CATEGORY_COLORS[d.category] || FALLBACK_SLICE_COLOR,
-      };
-    });
+        endAngle,
+      });
+      return result;
+    }, []);
 
   return (
     <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
@@ -411,6 +414,8 @@ export default function Profile() {
   }, []);
 
   useEffect(() => {
+    // Load profile data asynchronously; state updates follow the network responses.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadProfile();
     loadWatched();
     loadGroupedWatchlist();
@@ -576,27 +581,22 @@ export default function Profile() {
     }
   }
 
-  const birthDate = useMemo(() => {
-    if (!profile?.date_of_birth) {
-      return null;
-    }
-
-    const parsed = new Date(
-      `${profile.date_of_birth}T00:00:00`,
-    );
-
-    return Number.isNaN(parsed.getTime())
-      ? null
-      : parsed;
-  }, [profile?.date_of_birth]);
+  const birthDateValue = profile?.date_of_birth;
+  const birthDate = birthDateValue
+    ? new Date(`${birthDateValue}T00:00:00`)
+    : null;
+  const validBirthDate =
+    birthDate && !Number.isNaN(birthDate.getTime())
+      ? birthDate
+      : null;
 
   const age: AgeBreakdown | null = useMemo(() => {
-    if (!birthDate) {
+    if (!validBirthDate) {
       return null;
     }
 
-    return computeAge(birthDate, now);
-  }, [birthDate, now]);
+    return computeAge(validBirthDate, now);
+  }, [validBirthDate, now]);
 
   const totalWatchSeconds = useMemo(() => {
     return watchedItems.reduce(
@@ -736,7 +736,7 @@ export default function Profile() {
 
       {age && (
         <p className="mt-3 text-center text-xs text-white/40 sm:text-left">
-          You've spent{" "}
+          You&apos;ve spent{" "}
           <span className="font-semibold text-purple-300">
             {formatPercent(lifePercentWatched)}
           </span>{" "}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { ACTIVE_MEDIA_CATEGORIES } from "../lib/categories";
 
 type DayData = {
   day: string;
@@ -64,6 +65,7 @@ export default function WatchTimeChart() {
           .from("watch_sessions")
           .select("total_seconds,created_at")
           .eq("user_id", user.id)
+          .in("category", [...ACTIVE_MEDIA_CATEGORIES])
           .gte("created_at", sinceDate.toISOString());
 
         if (error) {
@@ -78,7 +80,11 @@ export default function WatchTimeChart() {
           secondsByDay[key] = 0;
         });
 
-        (data ?? []).forEach((row: any) => {
+        (data ?? []).forEach(
+          (row: {
+            created_at: string | null;
+            total_seconds: number | null;
+          }) => {
           if (!row.created_at) return;
 
           const key = new Date(row.created_at)
@@ -88,7 +94,8 @@ export default function WatchTimeChart() {
           if (key in secondsByDay) {
             secondsByDay[key] += Number(row.total_seconds ?? 0);
           }
-        });
+          },
+        );
 
         const nextWatchTime: DayData[] = emptyWeek.map(
           ({ key, day }) => ({

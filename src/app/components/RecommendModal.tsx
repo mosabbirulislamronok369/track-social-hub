@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { listFriends, type FriendProfile } from "../lib/friends";
 import { sendRecommendation } from "../lib/recommendations";
+import type { ActiveMediaCategory } from "../lib/categories";
 
 export default function RecommendModal({
   contentType,
@@ -11,7 +12,7 @@ export default function RecommendModal({
   posterPath,
   onClose,
 }: {
-  contentType: string;
+  contentType: ActiveMediaCategory;
   contentId: string;
   contentTitle: string;
   posterPath?: string | null;

@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 
-export type TrackedCategory = "Anime" | "TV";
+export type TrackedCategory = "TV";
 
 export type EpisodeInfo = {
   episodeNumber: number;
@@ -25,6 +25,13 @@ export type EpisodeGroup = {
   episodes: EpisodeInfo[];
 };
 
+type EpisodeApiItem = {
+  episodeNumber?: unknown;
+  name?: unknown;
+  runtimeSeconds?: unknown;
+  airDate?: unknown;
+};
+
 export async function fetchTvSeasonEpisodes(
   tmdbId: string | number,
   seasonNumber: number,
@@ -47,15 +54,20 @@ export async function fetchTvSeasonEpisodes(
     );
   }
 
-  const data = await res.json();
-  const raw = Array.isArray(data?.episodes) ? data.episodes : [];
+  const data = (await res.json()) as { episodes?: unknown };
+  const raw: EpisodeApiItem[] = Array.isArray(data.episodes)
+    ? data.episodes.filter(
+        (episode): episode is EpisodeApiItem =>
+          typeof episode === "object" && episode !== null,
+      )
+    : [];
 
   return raw
     .filter(
-      (ep: any) =>
-        typeof ep?.episodeNumber === "number" && ep.episodeNumber > 0,
+      (ep) =>
+        typeof ep.episodeNumber === "number" && ep.episodeNumber > 0,
     )
-    .map((ep: any, index: number) => ({
+    .map((ep, index: number) => ({
       // 👇 এখানে index + 1 দেওয়া হলো যাতে সব এপিসোডের নম্বর ইউনিক হয়
       episodeNumber: index + 1,
       name:
@@ -68,15 +80,6 @@ export async function fetchTvSeasonEpisodes(
           : fallbackSeconds,
       airDate: typeof ep?.airDate === "string" ? ep.airDate : null,
     }));
-}
-
-export async function fetchAnimeEpisodes(
-  tmdbId: string | number,
-  fallbackRuntimeSeconds: number,
-): Promise<EpisodeInfo[]> {
-  const fallbackMinutes =
-    fallbackRuntimeSeconds > 0 ? fallbackRuntimeSeconds / 60 : null;
-  return fetchTvSeasonEpisodes(tmdbId, 1, fallbackMinutes);
 }
 
 export async function fetchWatchedEpisodes(
@@ -101,7 +104,7 @@ export async function fetchWatchedEpisodes(
 
   return new Set(
     (data ?? [])
-      .map((row: any) => Number(row.episode_number))
+    .map((row: { episode_number: number }) => Number(row.episode_number))
       .filter((n) => Number.isFinite(n) && n > 0),
   );
 }
@@ -170,7 +173,8 @@ export async function syncTotalWatchTimeFromEpisodes(
   }
 
   const totalSeconds = (data ?? []).reduce(
-    (sum, row: any) => sum + Number(row.runtime_seconds ?? 0),
+  (sum, row: { runtime_seconds: number | null }) =>
+    sum + Number(row.runtime_seconds ?? 0),
     0,
   );
 
@@ -233,7 +237,8 @@ export async function syncWatchlistProgress(contentId: string): Promise<void> {
   }
 
   const maxEpisodeNumber = data.reduce(
-    (max, row: any) => Math.max(max, Number(row.episode_number ?? 0)),
+    (max, row: { episode_number: number }) =>
+      Math.max(max, Number(row.episode_number ?? 0)),
     0,
   );
 
@@ -260,7 +265,16 @@ export async function fetchArcs(
     .order("start_episode", { ascending: true });
 
   if (error) return [];
-  return (data ?? []).map((row: any) => ({
+  return (data ?? []).map((row: {
+    id: string;
+    content_id: string;
+    category: string;
+    season_number: number;
+    name: string;
+    start_episode: number;
+    end_episode: number;
+    created_at: string;
+  }) => ({
     id: row.id,
     contentId: row.content_id,
     category: row.category as TrackedCategory,

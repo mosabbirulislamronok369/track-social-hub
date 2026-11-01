@@ -69,6 +69,8 @@ export default function RatingBoard() {
 
   // Initial load — top rated only.
   useEffect(() => {
+    // Load ratings asynchronously; state updates follow the query.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadTop();
   }, [loadTop]);
 
@@ -80,6 +82,7 @@ export default function RatingBoard() {
 
     if (!searchQuery.trim()) {
       // Back to the idle/top view — no query fired.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       loadTop();
       return;
     }
@@ -188,7 +191,7 @@ export default function RatingBoard() {
           </p>
 
           <p className="mt-2 text-sm text-white/40">
-            Nothing you've rated matches "{searchQuery.trim()}".
+            Nothing you&apos;ve rated matches &quot;{searchQuery.trim()}&quot;.
           </p>
         </div>
       )}
@@ -200,8 +203,7 @@ export default function RatingBoard() {
           </p>
 
           <p className="mt-2 text-sm text-white/40">
-            Rate something from Browse or Anime to
-            see it here.
+            Rate something from Browse to see it here.
           </p>
         </div>
       )}

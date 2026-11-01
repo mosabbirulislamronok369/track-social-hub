@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { ACTIVE_MEDIA_CATEGORIES } from "./categories";
 
 /* ============================================================
    PROFILE
@@ -153,6 +154,7 @@ export async function fetchWatchedContent(): Promise<
       "content_id,category,title,total_seconds",
     )
     .eq("user_id", user.id)
+    .in("category", [...ACTIVE_MEDIA_CATEGORIES])
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -304,7 +306,7 @@ export function formatAge(
 
    Statuses match UniversalBrowser.tsx's ItemStatus values
    exactly ("watching", "on_hold", "completed", "dropped") so
-   this reads the same watchlist_items rows that Browse/Anime
+   this reads the same watchlist_items rows that Browse
    already write, no new table or duplicate writes needed.
 ============================================================ */
 
@@ -367,6 +369,7 @@ export async function fetchGroupedProfileWatchlist(): Promise<GroupedProfileWatc
       "content_id,category,title,image_url,status,current_episode,total_episodes",
     )
     .eq("user_id", user.id)
+    .in("category", [...ACTIVE_MEDIA_CATEGORIES])
     .in("status", PROFILE_STATUSES)
     .order("updated_at", { ascending: false });
 
