@@ -70,9 +70,10 @@ export async function GET(request: Request) {
     const episodes = (data?.episodes || []).map((ep: any) => ({
       episodeNumber: ep.episode_number,
       name: ep.name || `Episode ${ep.episode_number}`,
-      runtime:
+      // The client expects runtimeSeconds, not runtime minutes.
+      runtimeSeconds:
         typeof ep.runtime === "number" && ep.runtime > 0
-          ? ep.runtime
+          ? ep.runtime * 60
           : null,
       airDate: ep.air_date || null,
     }));
