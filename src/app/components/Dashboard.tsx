@@ -477,13 +477,35 @@ eventType: "completed",
 
         loadStats();
       } catch (error) {
-        console.error("Failed to mark next episode:", error);
-        alert(
-          error instanceof Error
-            ? error.message
-            : "Failed to mark episode as watched.",
-        );
-        loadContinueWatching();
+        // Supabase/PostgREST errors are plain objects, not always Error instances.
+        const dbError = error as {
+          message?: string;
+          details?: string;
+          hint?: string;
+          code?: string;
+        };
+
+        console.error("Failed to mark next episode:", {
+          message: dbError?.message,
+          details: dbError?.details,
+          hint: dbError?.hint,
+          code: dbError?.code,
+          originalError: error,
+        });
+
+        const errorMessage = [
+          dbError?.message,
+          dbError?.details,
+          dbError?.hint,
+          dbError?.code ? `Code: ${dbError.code}` : "",
+        ]
+          .filter(Boolean)
+          .join("\\n") || "Unknown database error.";
+
+        alert(`Episode update failed:\\n${errorMessage}`);
+
+        // Reload the server value so the optimistic UI cannot remain incorrect.
+        await loadContinueWatching();
       } finally {
         setMarkingEpisodeId(null);
       }

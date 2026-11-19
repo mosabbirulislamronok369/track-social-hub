@@ -187,21 +187,27 @@ export async function syncTotalWatchTimeFromEpisodes(
     .order("created_at", { ascending: false })
     .limit(1);
 
-  if (findError) return;
+  if (findError) {
+    throw findError;
+  }
   const existing = existingSessions?.[0];
 
   if (existing) {
-    await supabase
+    const { error: updateError } = await supabase
       .from("watch_sessions")
       .update({ total_seconds: totalSeconds, is_active: false, category, last_heartbeat: now })
       .eq("id", existing.id)
       .eq("user_id", user.id);
+
+    if (updateError) {
+      throw updateError;
+    }
     return;
   }
 
   if (totalSeconds <= 0) return;
 
-  await supabase.from("watch_sessions").insert({
+  const { error: insertError } = await supabase.from("watch_sessions").insert({
     user_id: user.id,
     content_id: contentId,
     started_at: now,
@@ -210,6 +216,10 @@ export async function syncTotalWatchTimeFromEpisodes(
     total_seconds: totalSeconds,
     category,
   });
+
+  if (insertError) {
+    throw insertError;
+  }
 }
 
 export async function syncWatchlistProgress(contentId: string): Promise<void> {
@@ -225,14 +235,20 @@ export async function syncWatchlistProgress(contentId: string): Promise<void> {
     .order("season_number", { ascending: true })
     .order("episode_number", { ascending: true });
 
-  if (error) return;
+  if (error) {
+    throw error;
+  }
 
   if (!data || data.length === 0) {
-    await supabase
+    const { error: resetError } = await supabase
       .from("watchlist_items")
       .update({ current_episode: 0, updated_at: new Date().toISOString() })
       .eq("user_id", user.id)
       .eq("content_id", contentId);
+
+    if (resetError) {
+      throw resetError;
+    }
     return;
   }
 
@@ -242,11 +258,15 @@ export async function syncWatchlistProgress(contentId: string): Promise<void> {
     0,
   );
 
-  await supabase
+  const { error: progressUpdateError } = await supabase
     .from("watchlist_items")
     .update({ current_episode: maxEpisodeNumber, updated_at: new Date().toISOString() })
     .eq("user_id", user.id)
     .eq("content_id", contentId);
+
+  if (progressUpdateError) {
+    throw progressUpdateError;
+  }
 }
 
 export async function fetchArcs(
