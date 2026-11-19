@@ -19,6 +19,7 @@ import {
 } from "../lib/categories";
 import { fetchTodayQuranLog } from "../lib/quranTrack";
 import WatchTimeChart from "./WatchTimeChart";
+import { recordWatchActivity, type WatchActivity } from "../lib/watchActivity";
 
 type Category = ActiveMediaCategory;
 
@@ -190,6 +191,70 @@ export default function Dashboard() {
   const [quranSeconds, setQuranSeconds] = useState(0);
   const [quranGoalMinutes, setQuranGoalMinutes] = useState<number | null>(null);
   const [quranLoading, setQuranLoading] = useState(true);
+
+  // Global activity / notification bell state
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [activities, setActivities] = useState<WatchActivity[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState<string | null>(null);
+  const [unreadActivities, setUnreadActivities] = useState(0);
+  const [activityUserId, setActivityUserId] = useState<string | null>(null);
+
+  const loadActivities = useCallback(async () => {
+    setActivityLoading(true);
+    setActivityError(null);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setActivities([]);
+        setUnreadActivities(0);
+        setActivityUserId(null);
+        return;
+      }
+      setActivityUserId(user.id);
+      const [{ data: rows, error: rowsError }, { data: readRow, error: readError }] = await Promise.all([
+        supabase.from("watch_activities").select("id,actor_id,actor_name,actor_avatar_url,event_type,content_id,category,title,episode_number,created_at").order("created_at", { ascending: false }).order("id", { ascending: false }).limit(30),
+        supabase.from("watch_activity_reads").select("last_seen_at").eq("user_id", user.id).maybeSingle(),
+      ]);
+      if (rowsError) throw rowsError;
+      if (readError) throw readError;
+      const list = (rows ?? []) as WatchActivity[];
+      setActivities(list);
+      const lastSeen = readRow?.last_seen_at ? new Date(readRow.last_seen_at).getTime() : 0;
+      setUnreadActivities(list.filter((activity) => activity.actor_id !== user.id && new Date(activity.created_at).getTime() > lastSeen).length);
+    } catch (error) {
+      console.error("Failed to load public watch activities:", error);
+      setActivityError(error instanceof Error ? error.message : "Could not load activity feed.");
+    } finally {
+      setActivityLoading(false);
+    }
+  }, []);
+
+  const markActivitiesRead = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const now = new Date().toISOString();
+    const { error } = await supabase.from("watch_activity_reads").upsert(
+      { user_id: user.id, last_seen_at: now },
+      { onConflict: "user_id" },
+    );
+    if (error) {
+      console.error("Failed to update activity read state:", error);
+      return;
+    }
+    setUnreadActivities(0);
+  }, []);
+
+  const toggleActivityPanel = useCallback(() => {
+    setActivityOpen((open) => {
+      const next = !open;
+      if (next) {
+        void loadActivities();
+        void markActivitiesRead();
+      }
+      return next;
+    });
+  }, [loadActivities, markActivitiesRead]);
 
   const loadQuran = useCallback(async () => {
     setQuranLoading(true);
@@ -383,6 +448,33 @@ export default function Dashboard() {
           throw watchlistError;
         }
 
+        await recordWatchActivity({
+          eventType: "episode",
+          contentId: item.contentId,
+          category: item.category,
+          title: item.title,
+          episodeNumber: nextEpisode,
+          sourceKey: `episode:${item.contentId}:${nextEpisode}:${Date.now()}`,
+        });
+        if (item.status === "watchlist") {
+          await recordWatchActivity({
+            eventType: "started",
+            contentId: item.contentId,
+            category: item.category,
+            title: item.title,
+            sourceKey: `started:${item.contentId}:${Date.now()}`,
+          });
+        }
+        if (isNowComplete) {
+          await recordWatchActivity({
+eventType: "completed",
+            contentId: item.contentId,
+            category: item.category,
+            title: item.title,
+            sourceKey: `completed:${item.contentId}:${Date.now()}`,
+          });
+        }
+
         loadStats();
       } catch (error) {
         console.error("Failed to mark next episode:", error);
@@ -497,6 +589,16 @@ export default function Dashboard() {
               throw sessionError;
             }
           }
+        }
+
+        if (newStatus === "completed") {
+          await recordWatchActivity({
+            eventType: item.category === "Movies" ? "movie" : "completed",
+            contentId: item.contentId,
+            category: item.category,
+            title: item.title,
+            sourceKey: `completed:${item.contentId}:${Date.now()}`,
+          });
         }
 
         loadStats();
@@ -629,6 +731,17 @@ export default function Dashboard() {
       )
       .subscribe();
 
+    const activityChannel = supabase
+      .channel("dashboard-public-watch-activities")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "watch_activities" },
+        () => {
+          void loadActivities();
+        },
+      )
+      .subscribe();
+
     const interval = setInterval(() => {
       loadStats();
       loadContinueWatching();
@@ -655,8 +768,13 @@ export default function Dashboard() {
       );
       supabase.removeChannel(statsChannel);
       supabase.removeChannel(watchlistChannel);
+      supabase.removeChannel(activityChannel);
     };
-  }, [loadStats, loadContinueWatching, loadQuran]);
+  }, [loadStats, loadContinueWatching, loadQuran, loadActivities]);
+
+  useEffect(() => {
+    void loadActivities();
+  }, [loadActivities]);
 
   useEffect(() => {
     if (!openMenuId) return;
@@ -705,7 +823,63 @@ export default function Dashboard() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:min-w-[230px]">
+          <div className="relative flex items-center gap-3 self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={toggleActivityPanel}
+              aria-label={`Notifications${unreadActivities ? `, ${unreadActivities} unread` : ""}`}
+              aria-expanded={activityOpen}
+              className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-black/25 text-xl text-white shadow-lg transition hover:border-white/20 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+            >
+              <span aria-hidden="true">🔔</span>
+              {unreadActivities > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-[#11111b] bg-red-500 px-1 text-[10px] font-bold text-white">
+                  {unreadActivities > 99 ? "99+" : unreadActivities}
+                </span>
+              )}
+            </button>
+
+            {activityOpen && (
+              <div className="absolute right-0 top-14 z-50 w-[min(92vw,390px)] overflow-hidden rounded-2xl border border-white/10 bg-[#11111b]/[.98] shadow-2xl shadow-black/50 backdrop-blur-2xl">
+                <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Watch Activity</h3>
+                    <p className="mt-0.5 text-[11px] text-white/40">Everyone’s public watch updates</p>
+                  </div>
+                  <button type="button" onClick={() => { void loadActivities(); void markActivitiesRead(); }} className="rounded-lg px-2 py-1 text-xs text-[var(--accent-2)] transition hover:bg-white/5">Refresh</button>
+                </div>
+                <div className="max-h-[min(65vh,520px)] overflow-y-auto">
+                  {activityLoading && activities.length === 0 ? (
+                    <div className="p-6 text-center text-sm text-white/45">Loading activity…</div>
+                  ) : activityError ? (
+                    <div className="p-5 text-center text-xs text-red-300">{activityError}<p className="mt-2 text-white/40">Run the included Supabase migration, then refresh.</p></div>
+                  ) : activities.length === 0 ? (
+                    <div className="p-6 text-center"><p className="text-sm font-semibold text-white/70">No activity yet</p><p className="mt-1 text-xs text-white/35">When people watch something, it will appear here.</p></div>
+                  ) : (
+                    activities.map((activity) => {
+                      const own = activity.actor_id === activityUserId;
+                      const verb = activity.event_type === "episode" ? `watched ${activity.category === "TV" ? "Episode" : "a video"}${activity.episode_number ? ` ${activity.episode_number}` : ""} of` : activity.event_type === "started" ? "started watching" : activity.event_type === "completed" ? "completed" : activity.event_type === "movie" ? "watched the movie" : activity.event_type === "watchlist" ? "added to watchlist" : "started rewatching";
+                      return (
+                        <div key={activity.id} className="flex gap-3 border-b border-white/[0.06] px-4 py-3 last:border-0 hover:bg-white/[0.035]">
+                          {activity.actor_avatar_url ? (
+                            <img src={activity.actor_avatar_url} alt="" className="h-9 w-9 shrink-0 rounded-full border border-white/10 object-cover" />
+                          ) : (
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[var(--accent)]/40 to-[var(--accent-2)]/30 text-sm font-bold text-white">{(activity.actor_name || "U").slice(0, 1).toUpperCase()}</div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs leading-5 text-white/75"><span className="font-bold text-white">{own ? "You" : activity.actor_name}</span> {verb} <span className="font-semibold text-white">{activity.title}</span></p>
+                            <p className="mt-1 text-[10px] text-white/35">{new Date(activity.created_at).toLocaleString()}</p>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+                <div className="border-t border-white/10 px-4 py-2 text-center text-[10px] text-white/30">Public activity · visible to all signed-in users</div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-2 sm:min-w-[230px]">
             <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-white/35">
                 Continue
@@ -721,6 +895,7 @@ export default function Dashboard() {
               <p className="mt-1 text-xl font-bold text-white">
                 {loading ? "—" : formatTime(rewatchSeconds)}
               </p>
+            </div>
             </div>
           </div>
         </div>
